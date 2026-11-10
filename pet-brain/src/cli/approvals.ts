@@ -14,7 +14,7 @@ export interface CliIo {
 
 export interface ApprovalCliDeps {
   approvals: ApprovalStore;
-  audit: AuditLog;
+  audit: Pick<AuditLog, "record">;
   io: CliIo;
 }
 

@@ -4,6 +4,7 @@ import type { MaestriClient } from "../maestri/client.js";
 import type { ApprovalStore } from "../pc/approvals.js";
 import type { AuditLog } from "../pc/audit.js";
 import type { ProcessRunner } from "../proc/run.js";
+import type { ReminderStore } from "../reminders/store.js";
 
 export interface ServerDeps {
   maestri: MaestriClient;
@@ -12,6 +13,7 @@ export interface ServerDeps {
   run: ProcessRunner;
   approvals: ApprovalStore;
   audit: AuditLog;
+  reminders: ReminderStore;
   opencodeBin: string;
 }
 

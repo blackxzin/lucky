@@ -10,6 +10,7 @@ import { startHub } from "./hub/run.js";
 import { createMaestriClient } from "./maestri/client.js";
 import { createApprovalStore } from "./pc/approvals.js";
 import { createAuditLog } from "./pc/audit.js";
+import { createReminderStore } from "./reminders/store.js";
 import { spawnRunner } from "./proc/run.js";
 import { createServer } from "./server.js";
 
@@ -30,6 +31,7 @@ async function serveMcp(config: Config): Promise<void> {
     homeDir: config.homeDir,
     run: spawnRunner,
     opencodeBin: config.opencodeBin,
+    reminders: createReminderStore({ dir: join(config.stateDir, "reminders") }),
     ...stores(config),
   });
   await server.connect(new StdioServerTransport());

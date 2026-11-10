@@ -10,6 +10,7 @@ import { loadOrCreateToken, tokenMatches } from "../src/hub/token.js";
 import { createApprovalStore, type ApprovalStore } from "../src/pc/approvals.js";
 import type { AuditEntry } from "../src/pc/audit.js";
 import { ProcError } from "../src/proc/run.js";
+import { createReminderStore, type ReminderStore } from "../src/reminders/store.js";
 import { writeNote } from "../src/vault/vault.js";
 import { fakeRun } from "./helpers.js";
 
@@ -149,6 +150,9 @@ describe("hub core", () => {
   let events: HubEvent[];
   let prompts: Array<{ prompt: string; sessionId: string | undefined }>;
   let vaultRoot: string;
+  let recent: Array<AuditEntry & { ts: string }>;
+  let reminders: ReminderStore;
+  let clock: Date;
 
   const SESSION = "0b6c1f0e-7c0a-4d7e-9b1a-2f5d3c4b5a69";
 
@@ -162,7 +166,8 @@ describe("hub core", () => {
     const created = createHubCore({
       agent,
       approvals,
-      audit: { record: async (entry) => void audited.push(entry) },
+      audit: { record: async (entry) => void audited.push(entry), recent: async () => recent, between: async () => [] },
+      reminders,
       vaultRoot,
       petName: "Bit",
     });
@@ -178,6 +183,9 @@ describe("hub core", () => {
     events = [];
     prompts = [];
     vaultRoot = join(dir, "vault");
+    recent = [];
+    clock = new Date("2026-11-10T12:00:00.000Z");
+    reminders = createReminderStore({ dir: join(dir, "reminders"), now: () => clock });
   });
 
   test("a chat message goes to the agent and the reply comes back", async () => {
@@ -238,6 +246,95 @@ describe("hub core", () => {
 
     expect(prompts.length).toBeLessThan(8);
     expect(texts().some((text) => /system: .*espera/i.test(text))).toBe(true);
+  });
+
+  test("announces when the backup agent takes over and when Claude comes back, and audits the switch", async () => {
+    const vias = ["claude", "opencode", "opencode", "claude"];
+    const hub = core(async () => ({ text: "ok", sessionId: undefined, via: vias.shift() }));
+
+    for (const text of ["um", "dois", "três", "quatro"]) await hub.chat(text);
+
+    const system = texts().filter((text) => text.startsWith("system:"));
+    expect(system).toHaveLength(2);
+    expect(system[0]).toMatch(/Claude.*OpenCode/);
+    expect(system[1]).toMatch(/Claude voltou/);
+    expect(audited.filter((entry) => entry.tool === "agent").map((entry) => entry.action)).toEqual([
+      "claude -> opencode",
+      "opencode -> claude",
+    ]);
+  });
+
+  test("tick delivers a due reminder to the chat once", async () => {
+    const hub = core();
+    await reminders.add({ text: "tomar água", dueAt: new Date(clock.getTime() + 60_000) });
+    clock = new Date(clock.getTime() + 120_000);
+
+    await hub.tick();
+    await hub.tick();
+
+    expect(texts().filter((text) => text.includes("tomar água"))).toEqual(["pet: ⏰ Lembrete: tomar água"]);
+  });
+
+  test("a failing audit log does not swallow the pet's reply on an agent switch", async () => {
+    const hub = createHubCore({
+      agent: { send: async () => ({ text: "oi do reserva", sessionId: undefined, via: "opencode" }) },
+      approvals,
+      audit: { record: async () => Promise.reject(new Error("disco cheio")), recent: async () => [], between: async () => [] },
+      reminders,
+      vaultRoot,
+      petName: "Bit",
+    });
+    hub.subscribe((event) => events.push(event));
+
+    await hub.chat("oi");
+
+    expect(texts()).toContain("pet: oi do reserva");
+  });
+
+  test("/status reports a failure instead of rejecting", async () => {
+    const hub = createHubCore({
+      agent: { send: async () => ({ text: "x", sessionId: undefined }) },
+      approvals,
+      audit: { record: async () => undefined, recent: async () => Promise.reject(new Error("falha")), between: async () => [] },
+      reminders,
+      vaultRoot,
+      petName: "Bit",
+    });
+    hub.subscribe((event) => events.push(event));
+
+    await expect(hub.chat("/status")).resolves.toBeUndefined();
+
+    expect(texts().some((text) => text.startsWith("system:"))).toBe(true);
+  });
+
+  test("an approval is handed back to the agent even when only the backup ever answered", async () => {
+    const hub = core(async () => ({ text: "preciso de aprovação", sessionId: undefined, via: "opencode" }));
+    const request = await approvals.request({ tool: "pc_run", action: "touch x", risk: "confirm", reason: "escreve" });
+    await hub.chat("faz");
+    prompts.length = 0;
+
+    await hub.decide(request.id, true);
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]?.prompt).toContain(request.id);
+  });
+
+  test("/status summarises the hub without running the agent or leaking action text", async () => {
+    recent = [
+      { ts: "2026-11-10T11:00:00.000Z", tool: "pc_run", action: "cat /segredo", decision: "auto" },
+      { ts: "2026-11-10T11:05:00.000Z", tool: "maestri_ask", action: "pergunta", decision: "sent" },
+    ];
+    await reminders.add({ text: "x", dueAt: new Date(clock.getTime() + 60_000) });
+    const hub = core();
+
+    await hub.chat("/status");
+
+    const status = texts().find((text) => text.startsWith("system: Status")) ?? "";
+    expect(status).toContain("pc_run");
+    expect(status).toContain("maestri_ask");
+    expect(status).toMatch(/lembretes: 1/i);
+    expect(status).not.toContain("segredo");
+    expect(prompts).toEqual([]);
   });
 
   test("an agent failure becomes a system message and frees the hub", async () => {

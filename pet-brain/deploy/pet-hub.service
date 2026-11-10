@@ -1,0 +1,20 @@
+# Hub do pet como serviço de usuário. Instalação em deploy/README.md.
+[Unit]
+Description=Pet hub (cérebro do pet)
+After=network-online.target
+
+[Service]
+Type=simple
+# Variáveis opcionais (PET_HUB_HOST=<ip do Tailscale>, PET_NAME, PET_OPENCODE_MODEL...). Sem o arquivo, sobe em 127.0.0.1.
+EnvironmentFile=-%h/.config/pet-brain/hub.env
+ExecStart=/usr/bin/env node %h/pet-brain/dist/index.js hub
+Restart=on-failure
+RestartSec=5
+# O hub só precisa da home do dono e de rede.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=%h
+
+[Install]
+WantedBy=default.target

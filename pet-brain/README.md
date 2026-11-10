@@ -82,3 +82,15 @@ Rode o hub **dentro de um terminal do Maestri** para o pet controlar o Maestri.
 Para o celular: `PET_HUB_HOST=<ip do Tailscale> node dist/index.js hub`.
 Clientes: `../pet-desktop` (Electron) e `../pet-android` (`./build.sh`).
 Decisões e riscos residuais: `docs/decisions.md` (15–24).
+
+## Reserva quando o Claude cai
+
+Se o `claude` falhar (não instalado, deslogado, assinatura vencida), o hub responde pelo OpenCode, só com as ferramentas do `pet-brain` e as mesmas travas. Modelo: `PET_OPENCODE_MODEL` (padrão `opencode/big-pickle`, formato `provider/modelo`). Binário: `OPENCODE_BIN`. O reserva não guarda histórico entre mensagens.
+
+## Lembretes, status e resumo diário
+
+- Peça ao pet "me lembra de X daqui a 20 minutos": ele usa `reminder_add` e o aviso aparece no chat na hora.
+- `/status` no chat mostra o estado do hub e as últimas ações (sem o texto delas).
+- Todo dia o hub escreve `journal/AAAA-MM-DD-resumo.md` com contagens do dia anterior.
+- No celular, o pet avisa por notificação quando chega pedido de aprovação (até 15s de atraso).
+- Hub no boot: veja `deploy/README.md`.

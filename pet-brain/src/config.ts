@@ -10,6 +10,8 @@ export interface Config {
   opencodeBin: string;
   /** CLI do agente que pensa pelo pet no hub (Claude Code). */
   agentBin: string;
+  /** Modelo do OpenCode que assume o chat quando o Claude falha (provider/modelo). */
+  opencodeModel: string;
   /** Aprovações e log de auditoria. Fora do cofre, para o modelo não ler nem escrever. */
   stateDir: string;
   /** Token do hub. */
@@ -51,12 +53,22 @@ function petName(env: Env): string {
   return name;
 }
 
+const MODEL_PATTERN = /^[a-z0-9][\w.-]*\/[\w.:/-]+$/i;
+const DEFAULT_OPENCODE_MODEL = "opencode/big-pickle";
+
+function opencodeModel(env: Env): string {
+  const model = nonEmpty(env.PET_OPENCODE_MODEL) ?? DEFAULT_OPENCODE_MODEL;
+  if (!MODEL_PATTERN.test(model)) throw new Error(`PET_OPENCODE_MODEL precisa ser provider/modelo (recebido: "${model}").`);
+  return model;
+}
+
 export function loadConfig(env: Env, homeDir: string): Config {
   return {
     vaultRoot: absoluteDir(env, "PET_VAULT_DIR", join(homeDir, "pet-vault")),
     maestriBin: nonEmpty(env.MAESTRI_CLI) ?? "maestri",
     opencodeBin: nonEmpty(env.OPENCODE_BIN) ?? "opencode",
     agentBin: nonEmpty(env.PET_AGENT_BIN) ?? "claude",
+    opencodeModel: opencodeModel(env),
     stateDir: absoluteDir(env, "PET_STATE_DIR", join(homeDir, ".local", "state", "pet-brain")),
     configDir: absoluteDir(env, "PET_CONFIG_DIR", join(homeDir, ".config", "pet-brain")),
     hubHost: nonEmpty(env.PET_HUB_HOST) ?? "127.0.0.1",

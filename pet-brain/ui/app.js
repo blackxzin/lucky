@@ -3,6 +3,10 @@
   const TOKEN_KEY = "pet-token";
   const HAPPY_MS = 4000;
   const SLEEP_MS = 5 * 60 * 1000;
+  const NIGHT_SLEEP_MS = 60 * 1000;
+  const NIGHT_START_HOUR = 23;
+  const NIGHT_END_HOUR = 7;
+  const FX_MS = { blink: 450, surprised: 600, confused: 1600, yawn: 1500 };
   const RECONNECT_MS = 2000;
   const $ = (id) => document.getElementById(id);
   const pet = $("pet");
@@ -12,6 +16,10 @@
   let state = null;
   let happyUntil = 0;
   let lastActivity = Date.now();
+  let fxName = "";
+  let fxUntil = 0;
+  let lastMood = "sleeping";
+  let knownApprovals = 0;
 
   async function readToken() {
     try {
@@ -31,11 +39,66 @@
     if (state.approvals.length > 0) return "alert";
     if (state.busy) return "thinking";
     if (Date.now() < happyUntil) return "happy";
-    if (Date.now() - lastActivity > SLEEP_MS) return "sleeping";
+    const idleFor = Date.now() - lastActivity;
+    if (idleFor > (isNight() ? NIGHT_SLEEP_MS : SLEEP_MS)) return "sleeping";
     return "idle";
   }
 
-  function renderMood() { pet.setAttribute("class", "pet mood-" + mood()); }
+  function isNight() {
+    const hour = new Date().getHours();
+    return hour >= NIGHT_START_HOUR || hour < NIGHT_END_HOUR;
+  }
+
+  /** Reação curta por cima do humor: piscada, susto, confusão, bocejo. */
+  function fx(name) {
+    fxName = name;
+    fxUntil = Date.now() + FX_MS[name];
+    renderMood();
+  }
+
+  const GAZE_MS = 2200;
+  const GAZE_X = 7;
+  const GAZE_Y = 4;
+  const GAZE_SMOOTH_MS = 90;
+  const MAX_FRAME_MS = 100;
+
+  const eyes = $("eyes");
+  const gaze = { x: 0, y: 0, targetX: 0, targetY: 0, nextAt: 0, lastFrame: 0 };
+
+  /** Escolhe pra onde os olhos vão olhar; em humor que não é "idle" ficam centralizados. */
+  function pickGaze(now) {
+    gaze.nextAt = now + GAZE_MS;
+    const current = mood();
+    if (current === "thinking") {
+      // Pensando: olha pra cima e alterna de lado, como quem procura a resposta.
+      gaze.targetX = (gaze.targetX > 0 ? -1 : 1) * GAZE_X;
+      gaze.targetY = -GAZE_Y;
+      return;
+    }
+    const resting = current !== "idle" || Math.random() < 0.3;
+    gaze.targetX = resting ? 0 : (Math.random() * 2 - 1) * GAZE_X;
+    gaze.targetY = resting ? 0 : (Math.random() * 2 - 1) * GAZE_Y;
+  }
+
+  /** Um quadro por vsync (60 fps ou o que a tela der). A suavização usa o tempo real, não o número de quadros. */
+  function frame(now) {
+    const dt = Math.min(now - (gaze.lastFrame || now), MAX_FRAME_MS);
+    gaze.lastFrame = now;
+    if (now >= gaze.nextAt) pickGaze(now);
+    const k = 1 - Math.exp(-dt / GAZE_SMOOTH_MS);
+    gaze.x += (gaze.targetX - gaze.x) * k;
+    gaze.y += (gaze.targetY - gaze.y) * k;
+    eyes.style.transform = "translate3d(" + gaze.x.toFixed(2) + "px, " + gaze.y.toFixed(2) + "px, 0)";
+    requestAnimationFrame(frame);
+  }
+
+  function renderMood() {
+    const current = mood();
+    if (current === "sleeping" && lastMood !== "sleeping" && lastMood !== "alert") { fxName = "yawn"; fxUntil = Date.now() + FX_MS.yawn; }
+    lastMood = current;
+    const effect = Date.now() < fxUntil ? " fx-" + fxName : "";
+    pet.setAttribute("class", "pet mood-" + current + effect);
+  }
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -76,6 +139,8 @@
   function renderState(next) {
     const wasBusy = state && state.busy;
     state = next;
+    if (next.approvals.length > knownApprovals) fx("surprised");
+    knownApprovals = next.approvals.length;
     if (wasBusy && !next.busy) happyUntil = Date.now() + HAPPY_MS;
     $("name").textContent = next.name;
     $("level").textContent = "nível " + next.stats.level;
@@ -91,7 +156,10 @@
       data.history.forEach(addMessage);
       renderState(data.state);
     } else if (data.type === "state") renderState(data.state);
-    else if (data.type === "message") addMessage(data.message);
+    else if (data.type === "message") {
+      addMessage(data.message);
+      fx(data.message.role === "system" ? "confused" : "blink");
+    }
     else if (data.type === "error") addMessage({ role: "system", text: data.text });
   }
 
@@ -123,9 +191,21 @@
     if (!text) return;
     input.value = "";
     lastActivity = Date.now();
+    if (text.toLowerCase() === "/parar" && window.PetHost && window.PetHost.stop) {
+      window.PetHost.stop();
+      return;
+    }
     send({ type: "chat", text });
   });
 
+  // No celular o painel é uma janela flutuante sem botão voltar: o app nativo oferece como fechá-lo.
+  if (window.PetHost && window.PetHost.minimize) {
+    const minimize = $("minimize");
+    minimize.hidden = false;
+    minimize.addEventListener("click", () => window.PetHost.minimize());
+  }
+
   setInterval(renderMood, 1000);
+  requestAnimationFrame(frame);
   connect();
 })();

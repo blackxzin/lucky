@@ -12,6 +12,8 @@ export class AgentError extends UserFacingError {}
 export interface AgentReply {
   text: string;
   sessionId: string | undefined;
+  /** Quem respondeu, quando há mais de um agente. */
+  via?: string | undefined;
 }
 
 export interface Agent {

@@ -7,21 +7,37 @@ html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:
 .muted { color:var(--muted); font-size:12px; }
 .conn { width:10px; height:10px; border-radius:50%; background:var(--danger); }
 .conn.on { background:var(--ok); }
-.pet { width:64px; height:64px; }
-.pet .body { fill:var(--accent); }
-.pet .eye { fill:#10131a; }
-.pet .mouth, .pet .antenna { stroke:#10131a; stroke-width:3; stroke-linecap:round; }
-.pet .bulb { fill:var(--muted); }
-.pet.mood-idle { animation:bob 3s ease-in-out infinite; }
-.pet.mood-thinking .bulb { fill:#ffd166; animation:blink .8s infinite; }
-.pet.mood-happy .body { fill:var(--ok); animation:hop .5s 2; }
-.pet.mood-alert .body { fill:var(--danger); animation:shake .4s infinite; }
-.pet.mood-sleeping { opacity:.6; }
-.pet.mood-sleeping .eye { transform:scaleY(.15); transform-origin:center; transform-box:fill-box; }
-@keyframes bob { 50% { transform:translateY(-3px); } }
-@keyframes blink { 50% { opacity:.2; } }
-@keyframes hop { 50% { transform:translateY(-10px); } }
-@keyframes shake { 25% { transform:translateX(-2px); } 75% { transform:translateX(2px); } }
+.minimize { margin-left:12px; min-width:44px; min-height:44px; font-size:20px; line-height:1; border-radius:8px; }
+.minimize[hidden] { display:none; }
+.pet { width:72px; height:72px; overflow:visible; }
+.pet .bezel { fill:#2a2f3b; }
+.pet .screen { fill:#06090d; }
+.pet .led { fill:var(--ok); }
+.pet .eyes { will-change:transform; }
+.pet .eye { fill:#5ff2ff; transform-box:fill-box; transform-origin:center; animation:blink 5s infinite; }
+.pet .eye-r { animation-delay:.03s; }
+.pet.mood-thinking .eye { fill:#ffd166; animation:none; transform:scaleY(.5); }
+.pet.mood-thinking .led { fill:#ffd166; animation:pulse .8s infinite; }
+.pet.mood-happy .eye { fill:var(--ok); animation:happy .6s ease-in-out 3; transform:scaleY(.45) translateY(-6px); }
+.pet.mood-alert .eye { fill:var(--danger); animation:alert .5s infinite; }
+.pet.mood-alert .led { fill:var(--danger); animation:pulse .5s infinite; }
+.pet.mood-alert .bezel { animation:shake .4s infinite; }
+.pet.mood-sleeping .eye { fill:#2d6f76; animation:none; transform:scaleY(.12); }
+.pet.mood-sleeping .led { fill:var(--muted); }
+@keyframes blink { 0%, 93%, 100% { transform:scaleY(1); } 96% { transform:scaleY(.08); } }
+@keyframes pulse { 50% { opacity:.2; } }
+@keyframes happy { 50% { translate:0 -3px; } }
+@keyframes alert { 50% { transform:scale(1.25); } }
+@keyframes shake { 25% { transform:translateX(-1.5px); } 75% { transform:translateX(1.5px); } }
+/* Reações curtas por cima do humor */
+.pet.fx-blink .eye { animation:blink-fast .45s ease-in-out 1; }
+.pet.fx-surprised .eye { animation:surprised .6s ease-out 1; }
+.pet.fx-confused .eye-l { animation:none; transform:scale(.7) rotate(-12deg); }
+.pet.fx-confused .eye-r { animation:none; transform:scale(1.15) rotate(8deg); }
+.pet.fx-yawn .eye { animation:yawn 1.5s ease-in-out 1; }
+@keyframes blink-fast { 0%, 100% { transform:scaleY(1); } 25%, 60% { transform:scaleY(.08); } 42% { transform:scaleY(1); } }
+@keyframes surprised { 0% { transform:scale(1); } 30% { transform:scale(1.4); } 100% { transform:scale(1); } }
+@keyframes yawn { 0% { transform:scaleY(1); } 35% { transform:scaleY(.2); } 60% { transform:scaleY(.55); } 100% { transform:scaleY(.12); } }
 @media (prefers-reduced-motion: reduce) { .pet, .pet * { animation:none !important; } }
 .approvals { display:flex; flex-direction:column; gap:6px; }
 .approval { background:var(--card); border-left:4px solid var(--accent); border-radius:6px; padding:8px; }

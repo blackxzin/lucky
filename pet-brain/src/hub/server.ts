@@ -10,6 +10,8 @@ import { parseClientMessage } from "./protocol.js";
 import { tokenMatches } from "./token.js";
 
 const WS_PATH = "/ws";
+const PENDING_PATH = "/api/pending";
+const BEARER_PREFIX = "Bearer ";
 const MAX_PAYLOAD_BYTES = 64 * 1024;
 const MAX_CLIENTS = 8;
 const MAX_UNAUTHENTICATED_PER_ADDRESS = 2;
@@ -95,6 +97,29 @@ export function createHubServer(options: HubServerOptions): HubServer {
   const pendingByAddress = new Map<string, number>();
   const send = (socket: WebSocket, payload: unknown): void => socket.send(JSON.stringify(payload));
 
+  /**
+   * Aviso de aprovações para o celular (que não mantém o WebSocket aberto). Mesmo token e mesma trava
+   * de tentativas do socket; devolve só id, ferramenta e risco, porque a notificação aparece na tela bloqueada.
+   */
+  const servePending = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    const address = request.socket.remoteAddress ?? "unknown";
+    if (lockout.isLocked(address)) {
+      response.writeHead(429, SECURITY_HEADERS).end();
+      return;
+    }
+    const header = request.headers.authorization ?? "";
+    const presented = header.startsWith(BEARER_PREFIX) ? header.slice(BEARER_PREFIX.length) : "";
+    if (!tokenMatches(token, presented)) {
+      lockout.fail(address);
+      response.writeHead(401, SECURITY_HEADERS).end();
+      return;
+    }
+    lockout.succeed(address);
+    const { state } = await core.snapshot();
+    const approvals = state.approvals.map(({ id, tool, risk }) => ({ id, tool, risk }));
+    response.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify({ approvals }));
+  };
+
   const serveAsset = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     if (!isAllowedHost(request)) {
       response.writeHead(421, SECURITY_HEADERS).end();
@@ -102,6 +127,14 @@ export function createHubServer(options: HubServerOptions): HubServer {
     }
     if (request.method !== "GET" && request.method !== "HEAD") {
       response.writeHead(405, SECURITY_HEADERS).end();
+      return;
+    }
+    if (pathOf(request) === PENDING_PATH) {
+      if (request.method !== "GET") {
+        response.writeHead(405, SECURITY_HEADERS).end();
+        return;
+      }
+      await servePending(request, response);
       return;
     }
     const asset = ASSETS[pathOf(request)];

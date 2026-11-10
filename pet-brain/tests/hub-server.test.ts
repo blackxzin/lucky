@@ -35,6 +35,7 @@ function fakeCore(): FakeCore {
     refresh: async () => {
       core.refreshes += 1;
     },
+    tick: async () => undefined,
     snapshot: async () => SNAPSHOT,
     subscribe: (listener) => {
       listeners = [...listeners, listener];
@@ -107,6 +108,9 @@ async function authed(): Promise<Client> {
   expect((await client.next()).type).toBe("hello");
   return client;
 }
+
+/** O cliente vê o fechamento antes do hub soltar o contador de sockets sem login; sem esta pausa o teste fica à mercê da carga da máquina. */
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 30));
 
 const get = (path: string, init: RequestInit = {}) => fetch(`http://127.0.0.1:${port}${path}`, init);
 
@@ -221,7 +225,10 @@ describe("hub websocket", () => {
 
   test("an idle unauthenticated socket counts as a failed attempt", async () => {
     await start({ authTimeoutMs: 20 });
-    for (let attempt = 0; attempt < 5; attempt += 1) await (await open()).closed;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await (await open()).closed;
+      await settle();
+    }
 
     await expect(open()).rejects.toThrow(/429/);
   });
@@ -250,6 +257,7 @@ describe("hub websocket", () => {
       const client = await open();
       client.socket.send(JSON.stringify({ type: "auth", token: "wrong" }));
       await client.closed;
+      await settle();
     }
 
     await expect(open()).rejects.toThrow(/429/);
@@ -350,5 +358,64 @@ describe("mcp config for the agent", () => {
         },
       },
     });
+  });
+});
+
+describe("hub pending-approvals endpoint (for the phone notification)", () => {
+  const PENDING = {
+    id: "a1b2c3d4e5f60718",
+    tool: "pc_run",
+    action: "rm -rf /segredo-do-dono",
+    risk: "danger" as const,
+    reason: "apaga arquivos",
+    expiresAt: "2026-11-10T00:10:00.000Z",
+  };
+
+  function api(headers: Record<string, string> = {}, method = "GET"): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+      const req = httpRequest({ host: "127.0.0.1", port, path: "/api/pending", method, headers }, (res) => {
+        let body = "";
+        res.on("data", (chunk: Buffer) => (body += String(chunk)));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+      });
+      req.on("error", reject);
+      req.end();
+    });
+  }
+
+  const bearer = (token: string): Record<string, string> => ({ Authorization: `Bearer ${token}` });
+
+  beforeEach(async () => {
+    core.snapshot = async () => ({ ...SNAPSHOT, state: { ...SNAPSHOT.state, approvals: [PENDING] } });
+    await start();
+  });
+
+  test("answers with ids and risk only, never the action text", async () => {
+    const response = await api(bearer(TOKEN));
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({ approvals: [{ id: PENDING.id, tool: "pc_run", risk: "danger" }] });
+    expect(response.body).not.toContain("segredo-do-dono");
+  });
+
+  test.each([
+    ["no token", {}],
+    ["a wrong token", bearer("b".repeat(64))],
+    ["a token in the wrong scheme", { Authorization: TOKEN }],
+  ])("refuses %s", async (_label, headers) => {
+    const response = await api(headers);
+
+    expect(response.status).toBe(401);
+    expect(response.body).not.toContain(PENDING.id);
+  });
+
+  test("locks the address out after repeated wrong tokens", async () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) await api(bearer("c".repeat(64)));
+
+    expect((await api(bearer(TOKEN))).status).toBe(429);
+  });
+
+  test("accepts only GET", async () => {
+    expect((await api(bearer(TOKEN), "POST")).status).toBe(405);
   });
 });

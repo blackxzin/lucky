@@ -27,6 +27,8 @@ export interface ProcessOptions {
   /** Texto enviado no stdin. Usado para prompts, que assim nunca viram argumento. */
   input?: string;
   maxOutputBytes?: number;
+  /** Variáveis somadas ao ambiente do filho. */
+  env?: Readonly<Record<string, string>>;
 }
 
 export type ProcessRunner = (bin: string, args: readonly string[], opts: ProcessOptions) => Promise<ProcessResult>;
@@ -36,7 +38,10 @@ export const spawnRunner: ProcessRunner = (bin, args, opts) =>
   new Promise((resolve, reject) => {
     const limit = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
     // detached: o filho vira líder de grupo, então o kill alcança também os netos (ex.: bash -c).
-    const child = spawn(bin, [...args], { cwd: opts.cwd, detached: true, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(bin, [...args], {
+      cwd: opts.cwd,
+      env: opts.env === undefined ? process.env : { ...process.env, ...opts.env },
+      detached: true, stdio: ["pipe", "pipe", "pipe"] });
 
     const chunks: { stdout: Buffer[]; stderr: Buffer[] } = { stdout: [], stderr: [] };
     let received = 0;

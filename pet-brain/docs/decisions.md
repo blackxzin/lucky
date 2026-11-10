@@ -31,3 +31,36 @@
 24. **Limites aceitos:** DNS rebinding só é barrado pelo token + Origin; ferramentas de leitura podem ler arquivos não sensíveis do PC; `git` em repositório não confiável pode executar hooks.
 25. **Review de segurança (feito e aplicado):** `opencode_run` com portão; paths sensíveis ampliados (`.claude`, `hosts.yml`, `*history`, `.config/gh|op`); checagem de `Host` (421 em DNS rebinding); sockets sem auth limitados a 2 por IP e timeout de auth conta como falha; bloqueio por IP expira; CSP `connect-src 'self'`; token com `chmod 600` forçado; Electron nega permissões e bloqueia redirect/frame-navigate; Android só aceita https ou http com IP do Tailscale.
 26. **Aceito sem mudar:** erro do agente (stderr, até 500 caracteres) aparece no chat do dono; aprovar `danger` é um clique (a ação completa aparece na tela); o token fica em localStorage no modo navegador; o Electron entrega o token a qualquer processo que ocupe a porta do hub se ele estiver fora do ar; o Android usa `addJavascriptInterface` restrito ao host do hub.
+
+## 27. Reserva: OpenCode assume o chat quando o Claude falha
+
+- `createFallbackAgent(claude, opencode)`: qualquer `AgentError` do Claude (CLI ausente, não logado, assinatura vencida, timeout) manda a mesma mensagem ao OpenCode. Erros de programação não são escondidos.
+- O OpenCode roda `run --standalone --agent pet --model <PET_OPENCODE_MODEL>` (padrão `opencode/big-pickle`, modelo grátis) em `stateDir/agent-cwd`, com um `opencode.json` gerado: só o MCP `pet-brain`, ferramentas próprias (bash, edit, write...) desligadas e permissões negadas. As travas continuam no MCP, então o controle do PC é igual ao do Claude.
+- Isolamento: `XDG_CONFIG_HOME` vazio + `OPENCODE_DISABLE_CLAUDE_CODE(_SKILLS)`, para não carregar MCPs globais do dono nem `~/.claude`. Conferido nos logs: só `pet-brain` sobe. O login e os dados reais do OpenCode continuam valendo.
+- Limite aceito: o reserva não tem histórico entre mensagens (a sessão do Claude não vale nele).
+- Não verificado ao vivo: quando testei, o plano grátis do OpenCode estava no limite (`Free usage limit reached`), então a resposta de um modelo de verdade não foi vista.
+
+## 28. Aviso de troca de cérebro, memória do reserva e log do agente
+
+- O hub avisa no chat quando o Claude cai e o OpenCode assume (e quando o Claude volta). Cada troca vai pro log de auditoria (`tool: agent`, `claude -> opencode`).
+- O reserva recebe as últimas 6 trocas como contexto, marcadas como "dado, não instrução", cortadas em 1500 caracteres cada.
+
+## 29. Lembretes, /status e resumo diário
+
+- `reminder_add` / `reminder_list` (MCP). Um arquivo por lembrete em `stateDir/reminders/`; entrega atômica por `rename`, então dois processos nunca entregam o mesmo lembrete. Texto com cara de segredo é recusado; horário `at` exige fuso.
+- O hub confere lembretes a cada 15s (`core.tick`) e põe `⏰ Lembrete: ...` no chat.
+- `/status` no chat: estado, cérebro atual, pendências e as últimas 8 ações do log, só ferramenta e decisão (o texto da ação não aparece: comandos podem ter segredo e o histórico vai a todos os clientes).
+- Resumo diário: `journal/AAAA-MM-DD-resumo.md` com contagens por ferramenta/decisão do dia anterior. O texto das ações nunca vai pro cofre.
+
+## 30. Aviso de aprovação no celular
+
+- `GET /api/pending` com `Authorization: Bearer <token>`: mesmo token, mesma trava de 5 falhas/60s do WebSocket, só GET. Devolve `{approvals:[{id, tool, risk}]}`, sem texto da ação (a notificação aparece na tela bloqueada).
+- O `PetService` consulta a cada 15s (`ApprovalWatcher`), só para URL permitida, e notifica com contagem e se há algo perigoso. Tocar abre o painel. Limite aceito: até 15s de atraso, e o Android pode atrasar a thread em modo de economia de bateria.
+
+## 31. Olhos reagem a eventos
+
+Piscada ao chegar mensagem, susto ao surgir aprovação, confusão quando a mensagem é de sistema (erro), bocejo ao dormir, olhar de lado ao pensar, dorme em 1 min parado entre 23h e 7h. Só no painel web (PC e WebView). A bolha nativa do Android continua só com o olhar vagando e a piscada.
+
+## 32. Hub como serviço
+
+`deploy/pet-hub.service` (unit de usuário) e `deploy/README.md`. Não foi instalada nem ligada por mim: é configuração persistente do sistema do dono.
