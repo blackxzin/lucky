@@ -64,3 +64,19 @@ Piscada ao chegar mensagem, susto ao surgir aprovação, confusão quando a mens
 ## 32. Hub como serviço
 
 `deploy/pet-hub.service` (unit de usuário) e `deploy/README.md`. Não foi instalada nem ligada por mim: é configuração persistente do sistema do dono.
+
+## 33. Voz só com a tela do Google visível
+
+O app Android **não tem** a permissão `RECORD_AUDIO`: não consegue ouvir por conta própria. O botão do microfone abre o reconhecimento de voz do Google (`VoiceActivity`, `RecognizerIntent`) e o texto ouvido só entra no campo do chat; o dono confere e envia. Se o celular não tiver essa tela (o Samsung A16 do dono não responde a ela), o app avisa e o campo fica em foco para o microfone do teclado. Foi tentado `SpeechRecognizer` direto (escuta sem tela); o dono recusou, por isso saiu.
+
+## 34. Hub em 127.0.0.1 pelo USB
+
+O app aceita `http://127.0.0.1` além de `https` e IP do Tailscale, para usar com `adb reverse tcp:8787 tcp:8787`. Risco aceito e conhecido: se o `adb reverse` estiver desligado, outro app do celular que ocupe a porta 8787 receberia o token. Só vale para teste por cabo; no uso normal o caminho é o Tailscale.
+
+## 35. Painel de status no próprio pet
+
+O estado do hub traz `brain` (agente que respondeu por último) e `reminders` (quantos esperam). A interface mostra "cérebro: claude · 2 lembretes" no cabeçalho. A bolinha nativa do Android fica âmbar e arregala os olhos enquanto há aprovação pendente.
+
+## 36. Vaga de socket sem login liberada na recusa
+
+O hub solta a vaga do contador de sockets sem login assim que recusa o socket (token errado ou prazo vencido), sem esperar o fim do fechamento. Antes, sob carga, o contador ficava preso e o dono podia levar 429 sem ter errado nada.

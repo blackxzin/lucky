@@ -24,6 +24,8 @@ import android.webkit.WebViewClient;
 public class PetService extends Service {
     static final String ACTION_STOP = "com.petbrain.pet.STOP";
     static final String ACTION_OPEN = "com.petbrain.pet.OPEN";
+    static final String ACTION_VOICE = "com.petbrain.pet.VOICE";
+    static final String EXTRA_TEXT = "text";
     private static final String CHANNEL_ID = "pet";
     private static final String APPROVAL_CHANNEL_ID = "pet-approvals";
     private static final int NOTIFICATION_ID = 1;
@@ -44,6 +46,10 @@ public class PetService extends Service {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             stopPet();
             return START_NOT_STICKY;
+        }
+        if (intent != null && ACTION_VOICE.equals(intent.getAction())) {
+            deliverVoice(intent.getStringExtra(EXTRA_TEXT));
+            return START_STICKY;
         }
         new Prefs(this).setWantsRunning(true);
         startForeground(NOTIFICATION_ID, notification());
@@ -68,6 +74,12 @@ public class PetService extends Service {
         stopWatcher();
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
+    }
+
+    /** Coloca o texto ouvido no campo do chat; quem confere e envia é o dono. JSONObject.quote gera um literal JS seguro. */
+    private void deliverVoice(String text) {
+        if (text == null || panel == null) return;
+        panel.evaluateJavascript("window.petVoice && window.petVoice(" + org.json.JSONObject.quote(text) + ")", null);
     }
 
     private void startWatcher() {
@@ -103,6 +115,8 @@ public class PetService extends Service {
 
     /** Aviso de pedido de aprovação. Só diz quantos e se há algo perigoso; o detalhe fica no painel. */
     private void showApprovalNotice(int total, boolean hasNew, boolean anyDanger) {
+        // Roda na thread do watcher: a bolinha só pode ser mexida na principal.
+        new Handler(Looper.getMainLooper()).post(() -> { if (bubble != null) bubble.setAlert(total > 0); });
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (total == 0) {
             manager.cancel(APPROVAL_NOTIFICATION_ID);
@@ -218,6 +232,13 @@ public class PetService extends Service {
         panel.addJavascriptInterface(new Object() {
             @JavascriptInterface
             public String getToken() { return prefs.token(); }
+
+            /** Botão do microfone: abre o reconhecimento de voz do sistema. */
+            @JavascriptInterface
+            public void listen() {
+                new Handler(Looper.getMainLooper()).post(() -> startActivity(
+                        new Intent(PetService.this, VoiceActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+            }
 
             /** Botão "—" do painel: fecha só a janela de chat; a bolinha continua. */
             @JavascriptInterface

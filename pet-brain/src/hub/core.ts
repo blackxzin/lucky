@@ -31,6 +31,10 @@ export interface HubState {
   busy: boolean;
   stats: VaultStats;
   approvals: PendingApproval[];
+  /** Agente que respondeu por último ("claude" ou "opencode"); null enquanto nenhum respondeu. */
+  brain: string | null;
+  /** Lembretes ainda não vencidos. */
+  reminders: number;
 }
 
 export type HubEvent = { type: "message"; message: ChatMessage } | { type: "state"; state: HubState };
@@ -87,8 +91,8 @@ export function createHubCore(options: HubCoreOptions): HubCore {
   };
 
   const readState = async (): Promise<HubState> => {
-    const [stats, pending] = await Promise.all([vaultStats(vaultRoot), approvals.list()]);
-    return { name: petName, busy: running, stats, approvals: pending.map(toPending) };
+    const [stats, pending, upcoming] = await Promise.all([vaultStats(vaultRoot), approvals.list(), reminders.list()]);
+    return { name: petName, busy: running, stats, approvals: pending.map(toPending), brain: lastVia ?? null, reminders: upcoming.length };
   };
 
   const emitState = async (): Promise<void> => {

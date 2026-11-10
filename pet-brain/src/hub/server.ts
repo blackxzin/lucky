@@ -156,10 +156,21 @@ export function createHubServer(options: HubServerOptions): HubServer {
 
   const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
 
-  const releasePending = (address: string): void => {
+  /** Sockets que já deixaram de contar como "sem login". Um socket só é solto uma vez. */
+  const released = new WeakSet<WebSocket>();
+  const releasePending = (socket: WebSocket, address: string): void => {
+    if (released.has(socket)) return;
+    released.add(socket);
     const left = (pendingByAddress.get(address) ?? 1) - 1;
     if (left > 0) pendingByAddress.set(address, left);
     else pendingByAddress.delete(address);
+  };
+
+  /** Recusa o socket já liberando a vaga: o fechamento termina depois, e esperar por ele deixaria o contador preso sob carga. */
+  const reject = (socket: WebSocket, address: string): void => {
+    lockout.fail(address);
+    releasePending(socket, address);
+    socket.close(CLOSE_UNAUTHORIZED, "unauthorized");
   };
 
   const handleMessage = (socket: WebSocket, address: string, raw: string): void => {
@@ -169,15 +180,14 @@ export function createHubServer(options: HubServerOptions): HubServer {
       if (message?.type === "auth" && tokenMatches(token, message.token)) {
         lockout.succeed(address);
         authenticated.add(socket);
-        releasePending(address);
+        releasePending(socket, address);
         core
           .snapshot()
           .then((snapshot) => send(socket, { type: "hello", ...snapshot }))
           .catch((error: unknown) => logError("falha ao montar o estado", error));
         return;
       }
-      lockout.fail(address);
-      socket.close(CLOSE_UNAUTHORIZED, "unauthorized");
+      reject(socket, address);
       return;
     }
 
@@ -198,15 +208,14 @@ export function createHubServer(options: HubServerOptions): HubServer {
     pendingByAddress.set(address, (pendingByAddress.get(address) ?? 0) + 1);
     const authTimer = setTimeout(() => {
       if (authenticated.has(socket)) return;
-      lockout.fail(address);
-      socket.close(CLOSE_UNAUTHORIZED, "unauthorized");
+      reject(socket, address);
     }, authTimeoutMs);
 
     socket.on("message", (data) => handleMessage(socket, address, String(data)));
     socket.on("error", (error) => logError("erro no socket", error));
     socket.on("close", () => {
       clearTimeout(authTimer);
-      if (!authenticated.delete(socket)) releasePending(address);
+      if (!authenticated.delete(socket)) releasePending(socket, address);
     });
   });
 

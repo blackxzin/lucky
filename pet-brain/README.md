@@ -94,3 +94,11 @@ Se o `claude` falhar (não instalado, deslogado, assinatura vencida), o hub resp
 - Todo dia o hub escreve `journal/AAAA-MM-DD-resumo.md` com contagens do dia anterior.
 - No celular, o pet avisa por notificação quando chega pedido de aprovação (até 15s de atraso).
 - Hub no boot: veja `deploy/README.md`.
+
+## Celular (Android)
+
+- Instalar: `cd pet-android && ./build.sh && adb install -r build/pet.apk`.
+- Por cabo: `adb reverse tcp:8787 tcp:8787`, URL `http://127.0.0.1:8787`, token de `~/.config/pet-brain/token`. Pela rede: Tailscale e `http://100.x.y.z:8787`.
+- Tocar na bolinha abre o chat; o botão **—** fecha só o chat. O pet volta sozinho depois do boot e depois de atualizar o app.
+- Microfone: só com a tela de voz do Google visível; o app não tem permissão de microfone (decisão 33).
+- Notificação de aprovação: consulta a cada 15s. Pedido aprovado ou negado em menos de 15s não notifica.

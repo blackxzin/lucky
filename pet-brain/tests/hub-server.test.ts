@@ -12,7 +12,7 @@ import { loadConfig } from "../src/config.js";
 const TOKEN = "a".repeat(64);
 
 const SNAPSHOT: HubSnapshot = {
-  state: { name: "Bit", busy: false, stats: { notes: 2, links: 1, level: 1 }, approvals: [] },
+  state: { name: "Bit", busy: false, stats: { notes: 2, links: 1, level: 1 }, approvals: [], brain: null, reminders: 0 },
   history: [{ role: "pet", text: "oi", ts: "2026-11-09T00:00:00.000Z" }],
 };
 
@@ -108,9 +108,6 @@ async function authed(): Promise<Client> {
   expect((await client.next()).type).toBe("hello");
   return client;
 }
-
-/** O cliente vê o fechamento antes do hub soltar o contador de sockets sem login; sem esta pausa o teste fica à mercê da carga da máquina. */
-const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 30));
 
 const get = (path: string, init: RequestInit = {}) => fetch(`http://127.0.0.1:${port}${path}`, init);
 
@@ -227,7 +224,6 @@ describe("hub websocket", () => {
     await start({ authTimeoutMs: 20 });
     for (let attempt = 0; attempt < 5; attempt += 1) {
       await (await open()).closed;
-      await settle();
     }
 
     await expect(open()).rejects.toThrow(/429/);
@@ -252,12 +248,12 @@ describe("hub websocket", () => {
   });
 
   test("locks an address out after repeated bad tokens, then lets it back", async () => {
-    await start();
+    // Prazo longo: sob carga o prazo de 80ms vence antes da mensagem chegar e a mesma tentativa contaria duas vezes.
+    await start({ authTimeoutMs: 5000 });
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const client = await open();
       client.socket.send(JSON.stringify({ type: "auth", token: "wrong" }));
       await client.closed;
-      await settle();
     }
 
     await expect(open()).rejects.toThrow(/429/);

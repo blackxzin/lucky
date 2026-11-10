@@ -275,6 +275,16 @@ describe("hub core", () => {
     expect(texts().filter((text) => text.includes("tomar água"))).toEqual(["pet: ⏰ Lembrete: tomar água"]);
   });
 
+  test("the state tells which brain answered last and how many reminders wait", async () => {
+    const hub = core(async () => ({ text: "oi", sessionId: undefined, via: "opencode" }));
+    await reminders.add({ text: "x", dueAt: new Date(clock.getTime() + 60_000) });
+
+    expect((await hub.snapshot()).state).toMatchObject({ brain: null, reminders: 1 });
+    await hub.chat("oi");
+
+    expect((await hub.snapshot()).state.brain).toBe("opencode");
+  });
+
   test("a failing audit log does not swallow the pet's reply on an agent switch", async () => {
     const hub = createHubCore({
       agent: { send: async () => ({ text: "oi do reserva", sessionId: undefined, via: "opencode" }) },

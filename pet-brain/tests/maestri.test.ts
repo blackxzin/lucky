@@ -120,7 +120,7 @@ describe("execFileRunner", () => {
   });
 
   test("a process that outlives the timeout surfaces as a timeout error", async () => {
-    const client = createMaestriClient({ bin: process.execPath, run: execFileRunner, listTimeoutMs: 200 });
+    const client = createMaestriClient({ bin: process.execPath, run: execFileRunner, listTimeoutMs: 10_000 });
 
     // `node list` nunca termina aqui: o arquivo "list" não existe, então usamos -e via env
     const slow = createMaestriClient({

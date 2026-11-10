@@ -145,6 +145,7 @@
     $("name").textContent = next.name;
     $("level").textContent = "nível " + next.stats.level;
     $("stats").textContent = next.stats.notes + " neurônios · " + next.stats.links + " conexões";
+    $("brain").textContent = "cérebro: " + (next.brain || "–") + " · " + next.reminders + (next.reminders === 1 ? " lembrete" : " lembretes");
     renderApprovals();
     renderMood();
   }
@@ -203,6 +204,19 @@
     const minimize = $("minimize");
     minimize.hidden = false;
     minimize.addEventListener("click", () => window.PetHost.minimize());
+  }
+
+  // Voz: o app nativo ouve e devolve o texto; ele só entra no campo, o dono confere e envia.
+  if (window.PetHost && window.PetHost.listen) {
+    const mic = $("mic");
+    mic.hidden = false;
+    // Sem a tela de voz do Google o app avisa; o campo já fica em foco para o microfone do teclado.
+    mic.addEventListener("click", () => { window.PetHost.listen(); $("input").focus(); });
+    window.petVoice = (text) => {
+      const input = $("input");
+      input.value = (input.value ? input.value + " " : "") + String(text).slice(0, 2000);
+      input.focus();
+    };
   }
 
   setInterval(renderMood, 1000);
