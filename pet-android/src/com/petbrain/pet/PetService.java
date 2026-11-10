@@ -303,6 +303,7 @@ public class PetService extends Service {
     }
 
     private void closePanel() {
+        if (bubble != null) bubble.setMood("idle");
         stopMic(); // sem o painel aberto não há para onde mandar o que foi ouvido
         windowManager.removeView(panel);
         panel.destroy();
@@ -343,6 +344,17 @@ public class PetService extends Service {
             @JavascriptInterface
             public void listen() {
                 main.post(PetService.this::toggleMic);
+            }
+
+            /** Humor e reações do rosto do chat, repetidos na bolinha. O nome é checado no PetBubble. */
+            @JavascriptInterface
+            public void mood(String name) {
+                main.post(() -> { if (bubble != null) bubble.setMood(name); });
+            }
+
+            @JavascriptInterface
+            public void fx(String name) {
+                main.post(() -> { if (bubble != null) bubble.setFx(name); });
             }
 
             /** Botão "—" do painel: fecha só a janela de chat; a bolinha continua. */

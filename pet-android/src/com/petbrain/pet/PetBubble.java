@@ -8,7 +8,11 @@ import android.os.SystemClock;
 import android.view.View;
 import java.util.Random;
 
-/** Telinha: tela escura com dois olhos quadrados que passeiam e piscam. Tudo em Canvas. */
+/**
+ * Telinha: tela escura com dois olhos quadrados que passeiam e piscam. Tudo em Canvas.
+ * Repete os humores e reações do rosto do chat (ui/style.css): idle, thinking, happy, alert, sleeping e as
+ * reações blink, surprised, confused, yawn. O humor vem do painel; sem painel só valem alerta e sono.
+ */
 final class PetBubble extends View {
     static final int SIZE_DP = 72;
 
@@ -26,9 +30,17 @@ final class PetBubble extends View {
     private static final long SURPRISE_EVERY_MS = 1400;
     private static final long SURPRISE_LEN_MS = 350;
     private static final int EYE_COLOR = 0xFF5FF2FF;
-    private static final int ALERT_COLOR = 0xFFFFC857;
+    private static final int ALERT_COLOR = 0xFFFF6B6B;
+    private static final int THINKING_COLOR = 0xFFFFD166;
+    private static final int HAPPY_COLOR = 0xFF6BDC8B;
+    private static final int SLEEP_COLOR = 0xFF2D6F76;
+    private static final long SLEEP_AFTER_MS = 5 * 60 * 1000;
 
     private volatile boolean alert;
+    private volatile String mood = "idle";
+    private volatile String fxName = "";
+    private volatile long fxStart;
+    private volatile long moodSince = SystemClock.uptimeMillis();
     private long gazeAt;
     private long lastFrame;
     private float gazeX, gazeY, targetX, targetY;
@@ -37,10 +49,34 @@ final class PetBubble extends View {
         super(context);
     }
 
-    /** Pedido de aprovação esperando: olhos âmbar que arregalam de tempos em tempos. */
+    /** Pedido de aprovação esperando (vindo do aviso de fundo, vale mesmo com o painel fechado). */
     void setAlert(boolean on) {
         alert = on;
     }
+
+    /** Humor do rosto do chat: idle, thinking, happy, alert ou sleeping. */
+    void setMood(String name) {
+        mood = name;
+        moodSince = SystemClock.uptimeMillis();
+    }
+
+    /** Reação curta por cima do humor. */
+    void setFx(String name) {
+        fxName = name;
+        fxStart = SystemClock.uptimeMillis();
+    }
+
+    private static long fxLength(String name) {
+        switch (name) {
+            case "blink": return 450;
+            case "surprised": return 600;
+            case "confused": return 1600;
+            case "yawn": return 1500;
+            default: return 0;
+        }
+    }
+
+    private static float lerp(float a, float b, float t) { return a + (b - a) * t; }
 
     private void box(Canvas c, float l, float t, float r, float b, float radius, int color) {
         paint.setColor(color);
@@ -70,13 +106,57 @@ final class PetBubble extends View {
         box(canvas, w * 0.06f, h * 0.22f, w * 0.94f, h * 0.78f, w * 0.09f, 0xFF2A2F3B);
         box(canvas, w * 0.13f, h * 0.29f, w * 0.87f, h * 0.71f, w * 0.04f, 0xFF06090D);
 
-        boolean surprised = alert && now % SURPRISE_EVERY_MS < SURPRISE_LEN_MS;
-        boolean blinking = !alert && now % BLINK_EVERY_MS < BLINK_LEN_MS;
-        float eye = w * (surprised ? 0.18f : 0.14f);
-        float eyeH = blinking ? eye * 0.12f : eye;
-        float top = h * 0.43f + gazeY + (eye - eyeH) / 2 - (surprised ? w * 0.02f : 0);
-        for (float left : new float[] {w * 0.29f, w * 0.57f}) {
-            box(canvas, left + gazeX - (surprised ? w * 0.02f : 0), top, left + gazeX - (surprised ? w * 0.02f : 0) + eye, top + eyeH, 0, alert ? ALERT_COLOR : EYE_COLOR);
+        String current = alert ? "alert" : mood;
+        if ("idle".equals(current) && now - moodSince > SLEEP_AFTER_MS) current = "sleeping";
+        String fx = fxName;
+        long fxLen = fxLength(fx);
+        float f = fxLen > 0 && now - fxStart < fxLen ? (now - fxStart) / (float) fxLen : -1f;
+
+        int color = EYE_COLOR;
+        float scaleX = 1f, scaleY = 1f, lift = 0f, shake = 0f;
+        boolean still = false;
+        switch (current) {
+            case "thinking": color = THINKING_COLOR; scaleY = 0.5f; break;
+            case "happy":
+                color = HAPPY_COLOR; scaleY = 0.45f;
+                lift = -w * 0.04f - (float) Math.abs(Math.sin(now / 190.0)) * w * 0.03f;
+                break;
+            case "alert":
+                color = ALERT_COLOR;
+                scaleX = scaleY = 1f + 0.25f * (float) Math.abs(Math.sin(now / 160.0));
+                shake = (now % 400 < 200 ? -1f : 1f) * w * 0.02f;
+                break;
+            case "sleeping": color = SLEEP_COLOR; scaleY = 0.12f; still = true; break;
+            default:
+                if (now % BLINK_EVERY_MS < BLINK_LEN_MS) scaleY = 0.12f;
+        }
+
+        float leftScale = 1f, rightScale = 1f, leftTurn = 0f, rightTurn = 0f;
+        if (f >= 0f) {
+            switch (fx) {
+                case "blink": scaleY = f < 0.25f || (f > 0.42f && f < 0.6f) ? 0.08f : 1f; break;
+                case "surprised": {
+                    float grow = f < 0.3f ? lerp(1f, 1.4f, f / 0.3f) : lerp(1.4f, 1f, (f - 0.3f) / 0.7f);
+                    scaleX *= grow; scaleY *= grow; break;
+                }
+                case "confused": leftScale = 0.7f; leftTurn = -12f; rightScale = 1.15f; rightTurn = 8f; break;
+                case "yawn": scaleY = f < 0.35f ? lerp(1f, 0.2f, f / 0.35f) : f < 0.6f ? lerp(0.2f, 0.55f, (f - 0.35f) / 0.25f) : lerp(0.55f, 0.12f, (f - 0.6f) / 0.4f); break;
+                default: break;
+            }
+        }
+
+        float eye = w * 0.14f;
+        float cy = h * 0.43f + eye / 2 + (still ? 0 : gazeY) + lift;
+        float[] lefts = {w * 0.29f, w * 0.57f};
+        for (int n = 0; n < 2; n++) {
+            float cx = lefts[n] + eye / 2 + (still ? 0 : gazeX) + shake;
+            float extra = n == 0 ? leftScale : rightScale;
+            canvas.save();
+            canvas.translate(cx, cy);
+            canvas.rotate(n == 0 ? leftTurn : rightTurn);
+            canvas.scale(scaleX * extra, scaleY * extra);
+            box(canvas, -eye / 2, -eye / 2, eye / 2, eye / 2, 0, color);
+            canvas.restore();
         }
         postInvalidateOnAnimation();
     }

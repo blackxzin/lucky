@@ -34,6 +34,11 @@
     return typed ? typed.trim() : "";
   }
 
+  /** No celular a bolinha flutuante repete o rosto: o humor e as reações são empurrados ao app nativo. */
+  function hostCall(method, value) {
+    try { if (window.PetHost && window.PetHost[method]) window.PetHost[method](value); } catch (e) { /* sem ponte */ }
+  }
+
   function mood() {
     if (!state) return "sleeping";
     if (state.approvals.length > 0) return "alert";
@@ -53,6 +58,7 @@
   function fx(name) {
     fxName = name;
     fxUntil = Date.now() + FX_MS[name];
+    hostCall("fx", name);
     renderMood();
   }
 
@@ -94,7 +100,8 @@
 
   function renderMood() {
     const current = mood();
-    if (current === "sleeping" && lastMood !== "sleeping" && lastMood !== "alert") { fxName = "yawn"; fxUntil = Date.now() + FX_MS.yawn; }
+    if (current === "sleeping" && lastMood !== "sleeping" && lastMood !== "alert") { fxName = "yawn"; fxUntil = Date.now() + FX_MS.yawn; hostCall("fx", "yawn"); }
+    if (current !== lastMood) hostCall("mood", current);
     lastMood = current;
     const effect = Date.now() < fxUntil ? " fx-" + fxName : "";
     pet.setAttribute("class", "pet mood-" + current + effect);
