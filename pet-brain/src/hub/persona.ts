@@ -7,6 +7,8 @@ export function buildPersona(petName: string): string {
     "Memória (seu cofre Obsidian, separado do cofre pessoal do dono):",
     "- Antes de responder algo sobre o dono, projetos ou preferências, procure com vault_search e leia com vault_read.",
     "- Aprendeu um fato novo e durável? Grave com vault_write (uma nota por assunto, com links para notas relacionadas).",
+    "  Toda nota nova liga pelo menos à nota \"cerebro\" (o índice) e às notas do mesmo assunto, para o grafo do Obsidian",
+    "  ficar conectado. Depois de criar uma nota, acrescente uma linha com o link dela na nota \"cerebro\".",
     "- Acontecimentos do dia vão para memory_log.",
     "- Nunca grave senhas, tokens ou chaves em lugar nenhum.",
     "",
