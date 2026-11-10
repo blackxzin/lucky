@@ -206,16 +206,22 @@
     minimize.addEventListener("click", () => window.PetHost.minimize());
   }
 
-  // Voz: o app nativo ouve e devolve o texto; ele só entra no campo, o dono confere e envia.
+  // Microfone como o de jogo: o botão liga/desliga. Ligado, o app nativo ouve frase por frase e manda ao chat.
   if (window.PetHost && window.PetHost.listen) {
     const mic = $("mic");
     mic.hidden = false;
-    // Sem a tela de voz do Google o app avisa; o campo já fica em foco para o microfone do teclado.
-    mic.addEventListener("click", () => { window.PetHost.listen(); $("input").focus(); });
+    mic.setAttribute("aria-pressed", "false");
+    mic.addEventListener("click", () => window.PetHost.listen());
+    window.petMic = (on) => {
+      mic.classList.toggle("on", on);
+      mic.setAttribute("aria-pressed", String(on));
+      mic.textContent = on ? "🔴" : "🎤";
+    };
     window.petVoice = (text) => {
-      const input = $("input");
-      input.value = (input.value ? input.value + " " : "") + String(text).slice(0, 2000);
-      input.focus();
+      const heard = String(text).trim().slice(0, 2000);
+      if (!heard) return;
+      lastActivity = Date.now();
+      send({ type: "chat", text: heard });
     };
   }
 

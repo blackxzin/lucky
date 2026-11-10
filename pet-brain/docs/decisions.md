@@ -65,7 +65,9 @@ Piscada ao chegar mensagem, susto ao surgir aprovação, confusão quando a mens
 
 `deploy/pet-hub.service` (unit de usuário) e `deploy/README.md`. Não foi instalada nem ligada por mim: é configuração persistente do sistema do dono.
 
-## 33. Voz só com a tela do Google visível
+## 33. Microfone ligado e desligado pelo dono (substitui a voz só pela tela do Google)
+
+A tela de voz do Google não abre neste celular, então o app usa o SpeechRecognizer do sistema com a permissão RECORD_AUDIO. O dono liga e desliga o microfone pelo botão do painel (como mutar no jogo). Ligado: ouve frase por frase, mostra 🔴 no botão e "microfone ligado" na notificação, e manda o texto ao chat. Desliga ao tocar de novo ou ao fechar o painel. Nunca escuta sozinho. Risco: ruído ou fala de terceiros vira mensagem; ações perigosas continuam exigindo aprovação na tela.
 
 O app Android **não tem** a permissão `RECORD_AUDIO`: não consegue ouvir por conta própria. O botão do microfone abre o reconhecimento de voz do Google (`VoiceActivity`, `RecognizerIntent`) e o texto ouvido só entra no campo do chat; o dono confere e envia. Se o celular não tiver essa tela (o Samsung A16 do dono não responde a ela), o app avisa e o campo fica em foco para o microfone do teclado. Foi tentado `SpeechRecognizer` direto (escuta sem tela); o dono recusou, por isso saiu.
 

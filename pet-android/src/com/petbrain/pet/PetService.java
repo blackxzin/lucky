@@ -9,6 +9,7 @@ import android.app.Service;
 import android.content.Intent;
 import android.graphics.PixelFormat;
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -25,7 +26,10 @@ public class PetService extends Service {
     static final String ACTION_STOP = "com.petbrain.pet.STOP";
     static final String ACTION_OPEN = "com.petbrain.pet.OPEN";
     static final String ACTION_VOICE = "com.petbrain.pet.VOICE";
-    static final String EXTRA_TEXT = "text";
+    static final String ACTION_MIC_ON = "com.petbrain.pet.MIC_ON";
+    private static final int MAX_MIC_ERRORS = 5;
+    private static final long MIC_RESTART_MS = 300;
+    private static final long MIC_ERROR_RESTART_MS = 2000;
     private static final String CHANNEL_ID = "pet";
     private static final String APPROVAL_CHANNEL_ID = "pet-approvals";
     private static final int NOTIFICATION_ID = 1;
@@ -43,6 +47,10 @@ public class PetService extends Service {
     private WebView panel;
     private WindowManager.LayoutParams bubbleParams;
     private ApprovalWatcher watcher;
+    private android.speech.SpeechRecognizer recognizer;
+    private boolean micOn;
+    private int micErrors;
+    private final Handler main = new Handler(Looper.getMainLooper());
 
     @Override
     public IBinder onBind(Intent intent) { return null; }
@@ -53,8 +61,8 @@ public class PetService extends Service {
             stopPet();
             return START_NOT_STICKY;
         }
-        if (intent != null && ACTION_VOICE.equals(intent.getAction())) {
-            deliverVoice(intent.getStringExtra(EXTRA_TEXT));
+        if (intent != null && ACTION_MIC_ON.equals(intent.getAction())) {
+            startMic();
             return START_STICKY;
         }
         new Prefs(this).setWantsRunning(true);
@@ -67,6 +75,7 @@ public class PetService extends Service {
 
     @Override
     public void onDestroy() {
+        stopMic();
         stopWatcher();
         if (bubble != null) windowManager.removeView(bubble);
         if (panel != null) closePanel();
@@ -82,10 +91,92 @@ public class PetService extends Service {
         stopSelf();
     }
 
-    /** Coloca o texto ouvido no campo do chat; quem confere e envia é o dono. JSONObject.quote gera um literal JS seguro. */
+    /** Manda ao chat o que foi ouvido. JSONObject.quote gera um literal JS seguro. */
     private void deliverVoice(String text) {
         if (text == null || panel == null) return;
         panel.evaluateJavascript("window.petVoice && window.petVoice(" + org.json.JSONObject.quote(text) + ")", null);
+    }
+
+    private void tellPanelMic() {
+        if (panel != null) panel.evaluateJavascript("window.petMic && window.petMic(" + micOn + ")", null);
+    }
+
+    /** Botão do microfone: liga se desligado, desliga se ligado. Sem permissão ainda, pede primeiro. */
+    private void toggleMic() {
+        if (micOn) {
+            stopMic();
+        } else if (checkSelfPermission("android.permission.RECORD_AUDIO") == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            startMic();
+        } else {
+            startActivity(new Intent(this, VoiceActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        }
+    }
+
+    private void startMic() {
+        if (micOn || panel == null) return;
+        if (!android.speech.SpeechRecognizer.isRecognitionAvailable(this)) {
+            android.widget.Toast.makeText(this, "Este celular não tem reconhecimento de voz.", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        micOn = true;
+        micErrors = 0;
+        startForeground(NOTIFICATION_ID, notification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE | android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+        recognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this);
+        recognizer.setRecognitionListener(new MicListener());
+        tellPanelMic();
+        listenOnce();
+    }
+
+    private void stopMic() {
+        main.removeCallbacksAndMessages(null);
+        boolean wasOn = micOn;
+        micOn = false;
+        if (recognizer != null) {
+            recognizer.destroy();
+            recognizer = null;
+        }
+        if (wasOn) {
+            startForeground(NOTIFICATION_ID, notification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            tellPanelMic();
+        }
+    }
+
+    private void listenOnce() {
+        if (!micOn || recognizer == null) return;
+        recognizer.startListening(new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+                .putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 1));
+    }
+
+    /** Escuta frase por frase enquanto o microfone está ligado; erros seguidos demais desligam. */
+    private class MicListener implements android.speech.RecognitionListener {
+        @Override public void onResults(Bundle results) {
+            java.util.ArrayList<String> heard = results.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+            micErrors = 0;
+            if (heard != null && !heard.isEmpty()) deliverVoice(heard.get(0));
+            main.postDelayed(PetService.this::listenOnce, MIC_RESTART_MS);
+        }
+
+        @Override public void onError(int error) {
+            boolean quiet = error == android.speech.SpeechRecognizer.ERROR_NO_MATCH
+                    || error == android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT;
+            if (error == android.speech.SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS || (!quiet && ++micErrors >= MAX_MIC_ERRORS)) {
+                android.widget.Toast.makeText(PetService.this, "Microfone desligado: o reconhecimento de voz falhou.", android.widget.Toast.LENGTH_LONG).show();
+                stopMic();
+                return;
+            }
+            main.postDelayed(PetService.this::listenOnce, quiet ? MIC_RESTART_MS : MIC_ERROR_RESTART_MS);
+        }
+
+        @Override public void onReadyForSpeech(Bundle params) {}
+        @Override public void onBeginningOfSpeech() {}
+        @Override public void onRmsChanged(float rmsdB) {}
+        @Override public void onBufferReceived(byte[] buffer) {}
+        @Override public void onEndOfSpeech() {}
+        @Override public void onPartialResults(Bundle partialResults) {}
+        @Override public void onEvent(int eventType, Bundle params) {}
     }
 
     private void startWatcher() {
@@ -150,7 +241,7 @@ public class PetService extends Service {
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "Pet", NotificationManager.IMPORTANCE_LOW));
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("Pet ligado")
+                .setContentTitle(micOn ? "Pet ligado · microfone ligado" : "Pet ligado")
                 .setSmallIcon(android.R.drawable.star_on)
                 .setOngoing(true)
                 .addAction(new Notification.Action.Builder(null, "Parar", stopIntent).build())
@@ -211,6 +302,7 @@ public class PetService extends Service {
     }
 
     private void closePanel() {
+        stopMic(); // sem o painel aberto não há para onde mandar o que foi ouvido
         windowManager.removeView(panel);
         panel.destroy();
         panel = null;
@@ -246,11 +338,10 @@ public class PetService extends Service {
             @JavascriptInterface
             public String getToken() { return prefs.token(); }
 
-            /** Botão do microfone: abre o reconhecimento de voz do sistema. */
+            /** Botão do microfone: liga/desliga (mutar e desmutar). */
             @JavascriptInterface
             public void listen() {
-                new Handler(Looper.getMainLooper()).post(() -> startActivity(
-                        new Intent(PetService.this, VoiceActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)));
+                main.post(PetService.this::toggleMic);
             }
 
             /** Botão "—" do painel: fecha só a janela de chat; a bolinha continua. */

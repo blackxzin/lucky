@@ -55,3 +55,4 @@ button.deny { background:#3a3f4d; color:var(--fg); }
 
 .mic { min-width:44px; min-height:44px; margin-right:6px; border-radius:8px; }
 .mic[hidden] { display:none; }
+.mic.on { background:#7a1f2b; }
