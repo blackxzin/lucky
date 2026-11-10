@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { HubCore } from "./core.js";
+import type { HubCore, HubState } from "./core.js";
 import { createLockout } from "./lockout.js";
 import { parseClientMessage } from "./protocol.js";
 import { tokenMatches } from "./token.js";
@@ -19,6 +19,7 @@ const WILDCARD_HOSTS = new Set(["0.0.0.0", "::"]);
 const LOOPBACK_NAMES = ["127.0.0.1", "localhost", "[::1]"];
 const DEFAULT_POLL_MS = 1500;
 const DEFAULT_AUTH_TIMEOUT_MS = 5000;
+const DEFAULT_PENDING_WAIT_MS = 25_000;
 const CLOSE_UNAUTHORIZED = 4401;
 
 /** Só estes arquivos saem do disco; o caminho pedido nunca vira caminho de arquivo. */
@@ -43,6 +44,8 @@ export interface HubServerOptions {
   port: number;
   pollMs?: number;
   authTimeoutMs?: number;
+  /** Quanto /api/pending?since=... espera por uma mudança antes de responder igual. */
+  pendingWaitMs?: number;
   now?: () => number;
 }
 
@@ -87,6 +90,7 @@ export function createHubServer(options: HubServerOptions): HubServer {
   const { core, token, uiDir, host, port } = options;
   const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
   const authTimeoutMs = options.authTimeoutMs ?? DEFAULT_AUTH_TIMEOUT_MS;
+  const pendingWaitMs = options.pendingWaitMs ?? DEFAULT_PENDING_WAIT_MS;
   const lockout = createLockout(options.now ?? Date.now);
 
   let allowedHosts: Set<string> | undefined;
@@ -97,9 +101,42 @@ export function createHubServer(options: HubServerOptions): HubServer {
   const pendingByAddress = new Map<string, number>();
   const send = (socket: WebSocket, payload: unknown): void => socket.send(JSON.stringify(payload));
 
+  interface PendingView {
+    approvals: Array<{ id: string; tool: string; risk: string }>;
+    busy: boolean;
+    sig: string;
+  }
+
+  /** Só id, ferramenta e risco: a notificação aparece na tela bloqueada. `sig` identifica o estado para o long-poll. */
+  const pendingView = (state: HubState): PendingView => {
+    const approvals = state.approvals.map(({ id, tool, risk }) => ({ id, tool, risk }));
+    return { approvals, busy: state.busy, sig: `${state.busy ? 1 : 0}:${approvals.map((approval) => approval.id).join(",")}` };
+  };
+
+  /** Espera o estado deixar de ser `since` (ou o tempo acabar, ou o cliente sair). */
+  const waitForChange = (since: string, current: PendingView, request: IncomingMessage): Promise<PendingView> =>
+    new Promise((resolve) => {
+      let latest = current;
+      let finished = false;
+      const finish = (): void => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        unsubscribe();
+        resolve(latest);
+      };
+      const timer = setTimeout(finish, pendingWaitMs);
+      const unsubscribe = core.subscribe((event) => {
+        if (event.type !== "state") return;
+        latest = pendingView(event.state);
+        if (latest.sig !== since) finish();
+      });
+      request.on("close", finish);
+    });
+
   /**
-   * Aviso de aprovações para o celular (que não mantém o WebSocket aberto). Mesmo token e mesma trava
-   * de tentativas do socket; devolve só id, ferramenta e risco, porque a notificação aparece na tela bloqueada.
+   * Aviso de aprovações e humor para o celular (que não mantém o WebSocket aberto). Mesmo token e mesma trava
+   * de tentativas do socket. Com `?since=<sig>` vira long-poll: só responde quando o estado muda.
    */
   const servePending = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const address = request.socket.remoteAddress ?? "unknown";
@@ -115,9 +152,11 @@ export function createHubServer(options: HubServerOptions): HubServer {
       return;
     }
     lockout.succeed(address);
-    const { state } = await core.snapshot();
-    const approvals = state.approvals.map(({ id, tool, risk }) => ({ id, tool, risk }));
-    response.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify({ approvals }));
+    const since = new URL(request.url ?? "/", "http://hub").searchParams.get("since");
+    let view = pendingView((await core.snapshot()).state);
+    if (since !== null && since === view.sig) view = await waitForChange(since, view, request);
+    if (response.destroyed) return;
+    response.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify(view));
   };
 
   const serveAsset = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {

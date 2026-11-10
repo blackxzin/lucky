@@ -11,26 +11,29 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Consulta o hub a cada poucos segundos e avisa quando chega pedido de aprovação novo.
+ * Fica pendurado no hub (long-poll) e avisa na hora quando chega pedido de aprovação ou o pet começa/para de pensar.
  * O celular não mantém o WebSocket aberto com o painel fechado; este aviso cobre esse caso.
  * O hub só devolve id, ferramenta e risco (a notificação aparece até na tela bloqueada).
  */
 final class ApprovalWatcher {
     interface Listener {
         /** Chamado fora da thread principal. `hasNew` é true quando surgiu um pedido que ainda não tinha sido avisado. */
-        void onPending(int total, boolean hasNew, boolean anyDanger);
+        void onPending(int total, boolean hasNew, boolean anyDanger, boolean busy);
 
         /** O hub recusou o token (401). O watcher para de consultar: insistir só trava o celular fora do próprio hub. */
         void onRejected();
     }
 
     private static final String TAG = "PetWatcher";
-    private static final long POLL_MS = 15_000;
-    private static final int TIMEOUT_MS = 5_000;
+    private static final long RETRY_MS = 15_000;
+    private static final long NEXT_POLL_MS = 300;
+    private static final int CONNECT_TIMEOUT_MS = 5_000;
+    private static final int READ_TIMEOUT_MS = 35_000; // o hub segura a resposta por até 25s
     private static final long LOCKED_OUT_POLL_MS = 90_000;
     private static final int MAX_BODY_BYTES = 16 * 1024;
     private static final String PENDING_PATH = "/api/pending";
@@ -40,6 +43,7 @@ final class ApprovalWatcher {
     private final HandlerThread thread = new HandlerThread("pet-approval-watcher");
     private Handler handler;
     private Set<String> known = new HashSet<>();
+    private String since;
     private volatile boolean running;
 
     ApprovalWatcher(Prefs prefs, Listener listener) {
@@ -63,9 +67,10 @@ final class ApprovalWatcher {
 
     private void poll() {
         if (!running) return;
-        long next = POLL_MS;
+        long next = RETRY_MS;
         try {
             int status = check();
+            if (status == 200) next = NEXT_POLL_MS;
             if (status == 401) {
                 running = false;
                 listener.onRejected();
@@ -86,22 +91,24 @@ final class ApprovalWatcher {
         String token = prefs.token();
         if (!MainActivity.isAllowedHub(hubUrl) || token.isEmpty()) return 0;
 
-        HttpURLConnection connection = (HttpURLConnection) new URL(trimSlash(hubUrl) + PENDING_PATH).openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URL(trimSlash(hubUrl) + PENDING_PATH + (since == null ? "" : "?since=" + URLEncoder.encode(since, "UTF-8"))).openConnection();
         try {
-            connection.setConnectTimeout(TIMEOUT_MS);
-            connection.setReadTimeout(TIMEOUT_MS);
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
             connection.setInstanceFollowRedirects(false);
             connection.setRequestProperty("Authorization", "Bearer " + token);
             int status = connection.getResponseCode();
             if (status != 200) return status;
-            report(new JSONObject(readBody(connection.getInputStream())).getJSONArray("approvals"));
+            JSONObject body = new JSONObject(readBody(connection.getInputStream()));
+            since = body.optString("sig", null);
+            report(body.getJSONArray("approvals"), body.optBoolean("busy"));
             return status;
         } finally {
             connection.disconnect();
         }
     }
 
-    private void report(JSONArray approvals) throws Exception {
+    private void report(JSONArray approvals, boolean busy) throws Exception {
         // stop() pode ter rodado durante a consulta: não avisa depois de desligado.
         if (!running) return;
         Set<String> current = new HashSet<>();
@@ -115,7 +122,7 @@ final class ApprovalWatcher {
             anyDanger |= "danger".equals(approval.optString("risk"));
         }
         known = current;
-        listener.onPending(current.size(), hasNew, anyDanger);
+        listener.onPending(current.size(), hasNew, anyDanger, busy);
     }
 
     private static String trimSlash(String url) {

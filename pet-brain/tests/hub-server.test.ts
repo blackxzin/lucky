@@ -367,9 +367,9 @@ describe("hub pending-approvals endpoint (for the phone notification)", () => {
     expiresAt: "2026-11-10T00:10:00.000Z",
   };
 
-  function api(headers: Record<string, string> = {}, method = "GET"): Promise<{ status: number; body: string }> {
+  function api(headers: Record<string, string> = {}, method = "GET", query = ""): Promise<{ status: number; body: string }> {
     return new Promise((resolve, reject) => {
-      const req = httpRequest({ host: "127.0.0.1", port, path: "/api/pending", method, headers }, (res) => {
+      const req = httpRequest({ host: "127.0.0.1", port, path: `/api/pending${query}`, method, headers }, (res) => {
         let body = "";
         res.on("data", (chunk: Buffer) => (body += String(chunk)));
         res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
@@ -390,7 +390,11 @@ describe("hub pending-approvals endpoint (for the phone notification)", () => {
     const response = await api(bearer(TOKEN));
 
     expect(response.status).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({ approvals: [{ id: PENDING.id, tool: "pc_run", risk: "danger" }] });
+    expect(JSON.parse(response.body)).toEqual({
+      approvals: [{ id: PENDING.id, tool: "pc_run", risk: "danger" }],
+      busy: false,
+      sig: `0:${PENDING.id}`,
+    });
     expect(response.body).not.toContain("segredo-do-dono");
   });
 
@@ -413,5 +417,44 @@ describe("hub pending-approvals endpoint (for the phone notification)", () => {
 
   test("accepts only GET", async () => {
     expect((await api(bearer(TOKEN), "POST")).status).toBe(405);
+  });
+
+  describe("long-poll with ?since=", () => {
+    const stateWith = (busy: boolean): HubSnapshot["state"] => ({ ...SNAPSHOT.state, busy, approvals: [PENDING] });
+
+    beforeEach(async () => {
+      await server.close();
+      await start({ pendingWaitMs: 300 });
+    });
+
+    test("answers at once when the state already differs from the client's", async () => {
+      const response = await api(bearer(TOKEN), "GET", "?since=stale");
+
+      expect(JSON.parse(response.body).busy).toBe(false);
+    });
+
+    test("holds the request and answers when the state changes", async () => {
+      const waiting = api(bearer(TOKEN), "GET", `?since=0:${PENDING.id}`);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      core.emit({ type: "state", state: stateWith(true) });
+
+      expect(JSON.parse((await waiting).body)).toMatchObject({ busy: true, sig: `1:${PENDING.id}` });
+    });
+
+    test("answers with the same state when nothing changes before the wait ends", async () => {
+      const started = Date.now();
+      const response = await api(bearer(TOKEN), "GET", `?since=0:${PENDING.id}`);
+
+      expect(Date.now() - started).toBeGreaterThanOrEqual(250);
+      expect(JSON.parse(response.body).sig).toBe(`0:${PENDING.id}`);
+    });
+
+    test("still refuses a wrong token without waiting", async () => {
+      const started = Date.now();
+      const response = await api(bearer("d".repeat(64)), "GET", `?since=0:${PENDING.id}`);
+
+      expect(response.status).toBe(401);
+      expect(Date.now() - started).toBeLessThan(250);
+    });
   });
 });

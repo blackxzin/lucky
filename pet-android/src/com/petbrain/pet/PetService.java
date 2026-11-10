@@ -27,6 +27,7 @@ public class PetService extends Service {
     static final String ACTION_OPEN = "com.petbrain.pet.OPEN";
     static final String ACTION_VOICE = "com.petbrain.pet.VOICE";
     static final String ACTION_MIC_ON = "com.petbrain.pet.MIC_ON";
+    private static final long HAPPY_MS = 4000;
     private static final int MAX_MIC_ERRORS = 5;
     private static final long MIC_RESTART_MS = 300;
     private static final long MIC_ERROR_RESTART_MS = 2000;
@@ -49,6 +50,8 @@ public class PetService extends Service {
     private ApprovalWatcher watcher;
     private android.speech.SpeechRecognizer recognizer;
     private boolean micOn;
+    private boolean wasBusy;
+    private final Runnable listenAgain = this::listenOnce;
     private int micErrors;
     private final Handler main = new Handler(Looper.getMainLooper());
 
@@ -98,6 +101,18 @@ public class PetService extends Service {
         panel.evaluateJavascript("window.petVoice && window.petVoice(" + org.json.JSONObject.quote(text) + ")", null);
     }
 
+    /** Painel fechado: o humor vem do hub. Pensando -> feliz por um instante ao terminar -> normal. */
+    private void followBusy(boolean busy) {
+        if (busy == wasBusy) return;
+        wasBusy = busy;
+        if (busy) {
+            bubble.setMood("thinking");
+        } else {
+            bubble.setMood("happy");
+            main.postDelayed(() -> { if (bubble != null && panel == null && !wasBusy) bubble.setMood("idle"); }, HAPPY_MS);
+        }
+    }
+
     private void tellPanelMic() {
         if (panel != null) panel.evaluateJavascript("window.petMic && window.petMic(" + micOn + ")", null);
     }
@@ -130,7 +145,7 @@ public class PetService extends Service {
     }
 
     private void stopMic() {
-        main.removeCallbacksAndMessages(null);
+        main.removeCallbacks(listenAgain);
         boolean wasOn = micOn;
         micOn = false;
         if (recognizer != null) {
@@ -157,7 +172,7 @@ public class PetService extends Service {
             java.util.ArrayList<String> heard = results.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
             micErrors = 0;
             if (heard != null && !heard.isEmpty()) deliverVoice(heard.get(0));
-            main.postDelayed(PetService.this::listenOnce, MIC_RESTART_MS);
+            main.postDelayed(listenAgain, MIC_RESTART_MS);
         }
 
         @Override public void onError(int error) {
@@ -168,7 +183,7 @@ public class PetService extends Service {
                 stopMic();
                 return;
             }
-            main.postDelayed(PetService.this::listenOnce, quiet ? MIC_RESTART_MS : MIC_ERROR_RESTART_MS);
+            main.postDelayed(listenAgain, quiet ? MIC_RESTART_MS : MIC_ERROR_RESTART_MS);
         }
 
         @Override public void onReadyForSpeech(Bundle params) {}
@@ -183,7 +198,7 @@ public class PetService extends Service {
     private void startWatcher() {
         watcher = new ApprovalWatcher(new Prefs(this), new ApprovalWatcher.Listener() {
             @Override
-            public void onPending(int total, boolean hasNew, boolean anyDanger) { showApprovalNotice(total, hasNew, anyDanger); }
+            public void onPending(int total, boolean hasNew, boolean anyDanger, boolean busy) { showApprovalNotice(total, hasNew, anyDanger, busy); }
 
             @Override
             public void onRejected() { showTokenRejectedNotice(); }
@@ -212,9 +227,13 @@ public class PetService extends Service {
     }
 
     /** Aviso de pedido de aprovação. Só diz quantos e se há algo perigoso; o detalhe fica no painel. */
-    private void showApprovalNotice(int total, boolean hasNew, boolean anyDanger) {
+    private void showApprovalNotice(int total, boolean hasNew, boolean anyDanger, boolean busy) {
         // Roda na thread do watcher: a bolinha só pode ser mexida na principal.
-        new Handler(Looper.getMainLooper()).post(() -> { if (bubble != null) bubble.setAlert(total > 0); });
+        main.post(() -> {
+            if (bubble == null) return;
+            bubble.setAlert(total > 0);
+            if (panel == null) followBusy(busy); // com o painel aberto o rosto do chat manda no humor
+        });
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (total == 0) {
             manager.cancel(APPROVAL_NOTIFICATION_ID);
@@ -303,7 +322,7 @@ public class PetService extends Service {
     }
 
     private void closePanel() {
-        if (bubble != null) bubble.setMood("idle");
+        if (bubble != null) bubble.setMood(wasBusy ? "thinking" : "idle");
         stopMic(); // sem o painel aberto não há para onde mandar o que foi ouvido
         windowManager.removeView(panel);
         panel.destroy();
