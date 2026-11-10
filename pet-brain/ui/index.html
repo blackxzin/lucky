@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pet</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main class="panel">
+  <header class="top">
+    <svg id="pet" class="pet mood-idle" viewBox="0 0 100 100" role="img" aria-label="Pet">
+      <ellipse class="body" cx="50" cy="58" rx="36" ry="32"/>
+      <circle class="eye eye-l" cx="38" cy="52" r="5"/>
+      <circle class="eye eye-r" cx="62" cy="52" r="5"/>
+      <path class="mouth" d="M40 68 Q50 76 60 68" fill="none"/>
+      <path class="antenna" d="M50 26 L50 14" fill="none"/>
+      <circle class="bulb" cx="50" cy="12" r="4"/>
+    </svg>
+    <div class="info">
+      <strong id="name">Pet</strong>
+      <span id="level" class="muted">nível –</span>
+      <span id="stats" class="muted">– neurônios · – conexões</span>
+    </div>
+    <span id="conn" class="conn" title="conexão"></span>
+  </header>
+  <section id="approvals" class="approvals" aria-live="polite"></section>
+  <section id="log" class="log" aria-live="polite"></section>
+  <form id="form" class="form" autocomplete="off">
+    <input id="input" type="text" maxlength="8000" placeholder="Fala com o pet…" aria-label="Mensagem">
+    <button type="submit">Enviar</button>
+  </form>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

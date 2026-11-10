@@ -1,0 +1,9 @@
+{
+  "name": "pet-desktop",
+  "version": "0.1.0",
+  "description": "Pet flutuante no PC (Electron), conectado ao hub do pet-brain",
+  "main": "main.js",
+  "private": true,
+  "scripts": { "start": "electron ." },
+  "devDependencies": { "electron": "^45.2.3" }
+}

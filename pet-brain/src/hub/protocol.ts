@@ -1,0 +1,22 @@
+import { z } from "zod";
+
+export const MAX_CHAT_CHARS = 8000;
+const MAX_TOKEN_CHARS = 256;
+
+export const clientMessageSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("auth"), token: z.string().max(MAX_TOKEN_CHARS) }),
+  z.object({ type: z.literal("chat"), text: z.string().min(1).max(MAX_CHAT_CHARS) }),
+  z.object({ type: z.literal("decide"), id: z.string().regex(/^[a-f0-9]{16}$/), approved: z.boolean() }),
+  z.object({ type: z.literal("ping") }),
+]);
+
+export type ClientMessage = z.infer<typeof clientMessageSchema>;
+
+export function parseClientMessage(raw: string): ClientMessage | undefined {
+  try {
+    const parsed = clientMessageSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
