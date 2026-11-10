@@ -66,7 +66,8 @@ public class PetService extends Service {
             return START_STICKY;
         }
         new Prefs(this).setWantsRunning(true);
-        startForeground(NOTIFICATION_ID, notification());
+        // Tipo explícito: sem ele valem todos os do manifest, e o de microfone não pode começar em segundo plano.
+        startForeground(NOTIFICATION_ID, notification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         if (bubble == null) showBubble();
         if (watcher == null) startWatcher();
         if (intent != null && ACTION_OPEN.equals(intent.getAction()) && panel == null) openPanel();
