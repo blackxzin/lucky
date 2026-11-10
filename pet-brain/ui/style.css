@@ -45,10 +45,10 @@ html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:
 .approval.danger { border-left-color:var(--danger); }
 .approval code { display:block; margin:4px 0; white-space:pre-wrap; word-break:break-all; font-size:12px; }
 .approval .actions { display:flex; gap:6px; }
-.log { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
-.msg { flex:none; align-self:flex-start; width:fit-content; max-width:90%; min-width:0; overflow-wrap:anywhere; padding:6px 10px; border-radius:10px; background:var(--card); white-space:pre-wrap; }
-.msg.user { align-self:flex-end; background:#2b4a66; }
-.msg.system { align-self:center; color:var(--muted); font-size:12px; background:transparent; }
+.log { flex:1; min-height:0; overflow-y:auto; }
+.msg { display:block; width:fit-content; max-width:90%; margin:0 0 6px; padding:6px 10px; border-radius:10px; background:var(--card); white-space:pre-wrap; overflow-wrap:anywhere; }
+.msg.user { margin-left:auto; background:#2b4a66; }
+.msg.system { margin-left:auto; margin-right:auto; color:var(--muted); font-size:12px; background:transparent; text-align:center; }
 .form { display:flex; gap:6px; }
 input { flex:1; background:var(--card); color:var(--fg); border:1px solid #333a47; border-radius:6px; padding:8px; }
 button { background:var(--accent); color:#10131a; border:0; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
