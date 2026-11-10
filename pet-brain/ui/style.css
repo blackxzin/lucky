@@ -45,7 +45,7 @@ html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:
 .approval code { display:block; margin:4px 0; white-space:pre-wrap; word-break:break-all; font-size:12px; }
 .approval .actions { display:flex; gap:6px; }
 .log { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
-.msg { max-width:90%; padding:6px 10px; border-radius:10px; background:var(--card); white-space:pre-wrap; word-break:break-word; }
+.msg { flex:none; align-self:flex-start; width:fit-content; max-width:90%; min-width:0; overflow-wrap:anywhere; padding:6px 10px; border-radius:10px; background:var(--card); white-space:pre-wrap; }
 .msg.user { align-self:flex-end; background:#2b4a66; }
 .msg.system { align-self:center; color:var(--muted); font-size:12px; background:transparent; }
 .form { display:flex; gap:6px; }
