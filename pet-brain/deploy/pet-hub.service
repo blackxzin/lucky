@@ -7,7 +7,7 @@ After=network-online.target
 Type=simple
 # Variáveis opcionais (PET_HUB_HOST=<ip do Tailscale>, PET_NAME, PET_OPENCODE_MODEL...). Sem o arquivo, sobe em 127.0.0.1.
 EnvironmentFile=-%h/.config/pet-brain/hub.env
-ExecStart=/usr/bin/env node %h/pet-brain/dist/index.js hub
+ExecStart=/usr/bin/env node %h/lucky/pet-brain/dist/index.js hub
 Restart=on-failure
 RestartSec=5
 # O hub só precisa da home do dono e de rede.

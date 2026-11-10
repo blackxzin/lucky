@@ -2,7 +2,7 @@
 
 O hub sobe sozinho no login e reinicia se cair. Nada aqui usa sudo.
 
-1. Coloque o projeto em `~/pet-brain` (ou ajuste o `ExecStart` da unit) e rode `npm ci && npm run build` nele.
+1. Coloque o projeto em `~/lucky` (clone do repositório) (ou ajuste o `ExecStart` da unit) e rode `npm ci && npm run build` em `~/lucky/pet-brain`.
 2. Para escutar no Tailscale, crie `~/.config/pet-brain/hub.env` (modo 600):
 
    ```

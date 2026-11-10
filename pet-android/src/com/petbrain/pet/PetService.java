@@ -32,6 +32,12 @@ public class PetService extends Service {
     private static final int APPROVAL_NOTIFICATION_ID = 2;
     private static final int TAP_SLOP_PX = 12;
 
+    private static final String ERROR_PAGE = "<meta name=viewport content='width=device-width'>"
+            + "<body style='background:#14161c;color:#eee;font-family:sans-serif;padding:24px'>"
+            + "<h3>Não consegui falar com o hub</h3>"
+            + "<p>Confira se o PC está ligado, se o hub está rodando, se o Tailscale está ativo no celular e se a URL do app Pet está certa.</p>"
+            + "<button style='font-size:18px;padding:12px 24px' onclick='PetHost.minimize()'>Fechar</button></body>";
+
     private WindowManager windowManager;
     private PetBubble bubble;
     private WebView panel;
@@ -227,6 +233,13 @@ public class PetService extends Service {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 // Só o hub carrega aqui; o token nunca chega a outra origem.
                 return hubHost == null || !hubHost.equals(request.getUrl().getAuthority());
+            }
+
+            /** Hub fora do ar: em vez da página de erro do navegador (sem saída), mostra um aviso com botão de fechar. */
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
+                if (!request.isForMainFrame()) return;
+                view.loadDataWithBaseURL(null, ERROR_PAGE, "text/html", "utf-8", null);
             }
         });
         panel.addJavascriptInterface(new Object() {
