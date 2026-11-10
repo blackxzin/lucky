@@ -1,5 +1,6 @@
 :root { color-scheme: dark; --bg:#14161c; --card:#1e222b; --fg:#e8eaf0; --muted:#8b92a5; --accent:#7cc4ff; --danger:#ff6b6b; --ok:#6bdc8b; }
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:14px system-ui, sans-serif; }
 .panel { display:flex; flex-direction:column; height:100%; padding:10px; gap:8px; }
 .top { display:flex; align-items:center; gap:10px; }
