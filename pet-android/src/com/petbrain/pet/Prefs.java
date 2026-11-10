@@ -8,6 +8,7 @@ final class Prefs {
     private static final String FILE = "pet";
     private static final String KEY_URL = "hub_url";
     private static final String KEY_TOKEN = "token";
+    private static final String KEY_RUNNING = "running";
 
     private final SharedPreferences prefs;
 
@@ -17,6 +18,11 @@ final class Prefs {
 
     String hubUrl() { return prefs.getString(KEY_URL, ""); }
     String token() { return prefs.getString(KEY_TOKEN, ""); }
+
+    /** O dono ligou o pet e ainda não mandou parar. Só ele muda isso. */
+    boolean wantsRunning() { return prefs.getBoolean(KEY_RUNNING, false); }
+
+    void setWantsRunning(boolean value) { prefs.edit().putBoolean(KEY_RUNNING, value).apply(); }
 
     void save(String hubUrl, String token) {
         prefs.edit().putString(KEY_URL, hubUrl).putString(KEY_TOKEN, token).apply();

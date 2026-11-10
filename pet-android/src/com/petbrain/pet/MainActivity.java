@@ -49,12 +49,17 @@ public class MainActivity extends Activity {
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))));
         root.addView(overlay);
 
+        Button battery = new Button(this);
+        battery.setText("Não otimizar bateria (mantém o pet vivo)");
+        battery.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)));
+        root.addView(battery);
+
         Button start = new Button(this);
         start.setText("Ligar pet");
         start.setOnClickListener(v -> {
             String hub = url.getText().toString().trim();
             if (!isAllowedHub(hub)) {
-                Toast.makeText(this, "Use https://, ou http:// com IP do Tailscale (100.64–127.x.x.x).", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Use https://, ou http:// com IP do Tailscale (100.64–127.x.x.x) ou 127.0.0.1.", Toast.LENGTH_LONG).show();
                 return;
             }
             if (!Settings.canDrawOverlays(this)) {
@@ -69,19 +74,20 @@ public class MainActivity extends Activity {
 
         Button stop = new Button(this);
         stop.setText("Desligar pet");
-        stop.setOnClickListener(v -> stopService(new Intent(this, PetService.class)));
+        stop.setOnClickListener(v -> startService(new Intent(this, PetService.class).setAction(PetService.ACTION_STOP)));
         root.addView(stop);
 
         setContentView(root);
     }
 
-    /** https em qualquer host; http só para IP do Tailscale (100.64.0.0/10), que o WireGuard já cifra. */
+    /** https em qualquer host; http só para IP do Tailscale (100.64.0.0/10), que o WireGuard já cifra, ou 127.0.0.1 (USB via adb reverse). */
     static boolean isAllowedHub(String url) {
         Uri uri = Uri.parse(url);
         String host = uri.getHost();
         if (host == null) return false;
         if ("https".equals(uri.getScheme())) return true;
         if (!"http".equals(uri.getScheme())) return false;
+        if ("127.0.0.1".equals(host)) return true; // loopback do próprio celular: só chega ao PC via `adb reverse` (USB)
         String[] parts = host.split("\\.");
         if (parts.length != 4) return false;
         try {
