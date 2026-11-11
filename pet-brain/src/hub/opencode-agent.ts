@@ -24,8 +24,17 @@ export interface OpenCodeAgentOptions {
   configHome: string;
 }
 
+/** Ollama local (só loopback): modelo roda na máquina do dono, sem cota nem internet. */
+const OLLAMA_PROVIDER = {
+  npm: "@ai-sdk/openai-compatible",
+  name: "Ollama",
+  options: { baseURL: "http://127.0.0.1:11434/v1" },
+  models: { "hermes3:latest": { name: "Hermes 3" } },
+};
+
 export interface OpenCodeConfig {
   $schema: string;
+  provider: Record<string, typeof OLLAMA_PROVIDER>;
   mcp: Record<string, { type: "local"; command: string[]; environment: Record<string, string>; enabled: boolean }>;
   tools: Record<string, boolean>;
   permission: Record<string, "deny">;
@@ -40,6 +49,7 @@ export function buildOpenCodeConfig(
 ): OpenCodeConfig {
   return {
     $schema: "https://opencode.ai/config.json",
+    provider: { ollama: OLLAMA_PROVIDER },
     mcp: {
       [MCP_SERVER_NAME]: {
         type: "local",

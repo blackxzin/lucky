@@ -94,6 +94,11 @@ describe("opencode config", () => {
     expect(built.permission).toMatchObject({ bash: "deny", edit: "deny", webfetch: "deny" });
   });
 
+  test("declares the local Ollama provider on loopback only", () => {
+    expect(built.provider["ollama"]?.options.baseURL).toBe("http://127.0.0.1:11434/v1");
+    expect(Object.keys(built.provider["ollama"]?.models ?? {})).toContain("hermes3:latest");
+  });
+
   test("defines the pet agent with the persona", () => {
     expect(built.agent["pet"]?.prompt).toBe("persona");
   });
