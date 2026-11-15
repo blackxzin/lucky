@@ -21,24 +21,21 @@ function readToken() {
 const IN_HYPRLAND = Boolean(process.env.HYPRLAND_INSTANCE_SIGNATURE);
 const WINDOW_CLASS = "pet-desktop";
 
-function hyprctl(args) {
+function hyprEval(code) {
   return new Promise((resolve) => {
-    execFile("hyprctl", args, { timeout: 2000 }, (error, stdout) => resolve(error ? null : stdout));
+    execFile("hyprctl", ["eval", code], { timeout: 2000 }, (error) => resolve(!error));
   });
 }
 
 /** No Wayland o app não escolhe a própria posição; o Hyprland sim. Só mexe na janela do pet, sem tocar na config. */
 async function placeInHyprland(bounds) {
   if (!IN_HYPRLAND) return;
-  const target = "class:^(" + WINDOW_CLASS + ")$";
-  await hyprctl(["dispatch", "resizewindowpixel", "exact " + bounds.width + " " + bounds.height + "," + target]);
-  await hyprctl(["dispatch", "movewindowpixel", "exact " + bounds.x + " " + bounds.y + "," + target]);
-  const clients = await hyprctl(["clients", "-j"]);
-  try {
-    const mine = JSON.parse(clients).find((client) => client.class === WINDOW_CLASS);
-    if (mine && !mine.floating) await hyprctl(["dispatch", "togglefloating", "address:" + mine.address]);
-    if (mine && !mine.pinned) await hyprctl(["dispatch", "pin", "address:" + mine.address]);
-  } catch (error) { /* sem hyprctl: segue com a posição do sistema */ }
+  const win = 'window = "class:^(' + WINDOW_CLASS + ')$"';
+  const whole = (n) => Math.round(Number(n));
+  await hyprEval("hl.dispatch(hl.dsp.window.float({ action = \"on\", " + win + " }))");
+  await hyprEval("hl.dispatch(hl.dsp.window.pin({ action = \"on\", " + win + " }))");
+  await hyprEval("hl.dispatch(hl.dsp.window.resize({ x = " + whole(bounds.width) + ", y = " + whole(bounds.height) + ", exact = true, " + win + " }))");
+  await hyprEval("hl.dispatch(hl.dsp.window.move({ x = " + whole(bounds.x) + ", y = " + whole(bounds.y) + ", " + win + " }))");
 }
 
 /** Posição no topo, centralizada na tela principal. */
