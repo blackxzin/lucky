@@ -1,5 +1,5 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.js";
 import { createApprovalStore } from "../pc/approvals.js";
@@ -15,6 +15,7 @@ import { createAlerts } from "./alerts.js";
 import { createFallbackAgent } from "./fallback-agent.js";
 import { createHubCore } from "./core.js";
 import { buildMcpConfig } from "./mcp-config.js";
+import { createMediaArt } from "./media-art.js";
 import { createMedia } from "./media.js";
 import { buildOpenCodeConfig, createOpenCodeAgent } from "./opencode-agent.js";
 import { buildPersona } from "./persona.js";
@@ -83,6 +84,7 @@ export async function startHub(config: Config, runtime: HubRuntime): Promise<str
     host: config.hubHost,
     port: config.hubPort,
     media: createMedia({ run }),
+    mediaArt: createMediaArt([tmpdir(), process.env.XDG_RUNTIME_DIR ?? "", join(homedir(), ".cache")].filter((dir) => dir !== "")),
   });
   /** Uma execução por rótulo: se a anterior ainda não acabou, esta é pulada (o resumo diário não escreve duas vezes). */
   const running = new Set<string>();

@@ -66,21 +66,40 @@
       </form>
     </section>
     <section id="view-media" class="view" hidden>
-      <div class="card media">
-        <div class="cover" aria-hidden="true">🎵</div>
-        <div class="track">
-          <strong id="media-title">Nada tocando</strong>
-          <span id="media-artist" class="muted">–</span>
+      <div id="media-card" class="card media">
+        <div class="cover-wrap">
+          <div id="media-ring" class="ring" aria-hidden="true"></div>
+          <div class="cover" aria-hidden="true">
+            <img id="media-img" alt="" referrerpolicy="no-referrer" hidden>
+            <span id="media-note">🎵</span>
+          </div>
         </div>
-        <div class="controls">
-          <button type="button" class="round" data-media="previous" aria-label="Anterior">⏮</button>
-          <button type="button" class="round big" id="media-toggle" data-media="play-pause" aria-label="Tocar ou pausar">▶</button>
-          <button type="button" class="round" data-media="next" aria-label="Próxima">⏭</button>
-        </div>
-        <div class="volume">
-          <button type="button" class="round" data-media="volume-down" aria-label="Diminuir volume">🔉</button>
-          <span id="media-volume" class="muted">–</span>
-          <button type="button" class="round" data-media="volume-up" aria-label="Aumentar volume">🔊</button>
+        <div class="np-info">
+          <div class="track">
+            <strong id="media-title">Nada tocando</strong>
+            <span id="media-artist" class="muted">–</span>
+          </div>
+          <div class="seek" aria-hidden="true">
+            <span id="media-pos" class="muted">0:00</span>
+            <svg class="seek-bar" viewBox="0 0 200 16" preserveAspectRatio="none">
+              <path id="seek-played" class="played" d="M0 8H0"/>
+              <path id="seek-rest" class="rest" d="M0 8H200"/>
+              <rect id="seek-knob" class="knob" x="0" y="1" width="3" height="14" rx="1.5"/>
+            </svg>
+            <span id="media-len" class="muted">0:00</span>
+          </div>
+          <div class="controls">
+            <button type="button" class="round toggle" id="media-shuffle" data-media="shuffle" aria-label="Aleatório" aria-pressed="false">🔀</button>
+            <button type="button" class="round" data-media="previous" aria-label="Anterior">⏮</button>
+            <button type="button" class="round big" id="media-toggle" data-media="play-pause" aria-label="Tocar ou pausar">▶</button>
+            <button type="button" class="round" data-media="next" aria-label="Próxima">⏭</button>
+            <button type="button" class="round toggle" id="media-loop" data-media="loop" aria-label="Repetir" aria-pressed="false">🔁</button>
+          </div>
+          <div class="volume">
+            <button type="button" class="round" data-media="volume-down" aria-label="Diminuir volume">🔉</button>
+            <span id="media-volume" class="muted">–</span>
+            <button type="button" class="round" data-media="volume-up" aria-label="Aumentar volume">🔊</button>
+          </div>
         </div>
       </div>
     </section>

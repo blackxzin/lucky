@@ -7,6 +7,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { UserFacingError } from "../errors.js";
 import type { HubCore, HubState } from "./core.js";
 import { createLockout } from "./lockout.js";
+import type { MediaArtReader } from "./media-art.js";
 import type { MediaController } from "./media.js";
 import { parseClientMessage } from "./protocol.js";
 import { tokenMatches } from "./token.js";
@@ -50,6 +51,8 @@ export interface HubServerOptions {
   pendingWaitMs?: number;
   /** Controle de música do PC. Sem ele, pedidos "media" são recusados. */
   media?: MediaController;
+  /** Lê a capa do álbum que está em disco (file:) e devolve como data URL. Sem ele, a UI só mostra capas https. */
+  mediaArt?: MediaArtReader;
   now?: () => number;
 }
 
@@ -308,6 +311,13 @@ export function createHubServer(options: HubServerOptions): HubServer {
         if (error instanceof UserFacingError) send(socket, { type: "error", text: error.message });
         else logError("falha ao mexer em hábito", error);
       });
+      return;
+    }
+    if (message.type === "media_art") {
+      const reader = options.mediaArt;
+      const reply = (data: string | undefined): void => send(socket, { type: "media_art", url: message.url, data: data ?? null });
+      if (reader === undefined) reply(undefined);
+      else reader(message.url).then(reply, () => reply(undefined));
       return;
     }
     if (message.type === "media") {

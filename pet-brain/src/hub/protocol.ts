@@ -6,6 +6,7 @@ const MAX_TOKEN_CHARS = 256;
 const MAX_REMINDER_CHARS = 200;
 const MAX_REMINDER_MINUTES = 365 * 24 * 60;
 const MAX_HABIT_CHARS = 60;
+const MAX_ART_URL_CHARS = 600;
 const MIN_HABIT_MINUTES = 5;
 const MAX_HABIT_MINUTES = 24 * 60;
 
@@ -20,6 +21,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("signal"), kind: z.enum(SIGNALS) }),
   z.object({ type: z.literal("sleep"), asleep: z.boolean() }),
   z.object({ type: z.literal("media"), action: z.enum(MEDIA_ACTIONS) }),
+  z.object({ type: z.literal("media_art"), url: z.string().min(1).max(MAX_ART_URL_CHARS) }),
   z.object({ type: z.literal("reminders") }),
   z.object({ type: z.literal("reminder_add"), text: z.string().min(1).max(MAX_REMINDER_CHARS), inMinutes: z.number().int().min(1).max(MAX_REMINDER_MINUTES) }),
   z.object({ type: z.literal("reminder_cancel"), id: z.string().regex(/^[a-f0-9]{16}$/) }),

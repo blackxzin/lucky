@@ -574,7 +574,7 @@ describe("hub devices", () => {
     await start({
       media: async (action) => {
         calls.push(action);
-        return { available: true, playing: true, title: "One For The Road", artist: "Arctic Monkeys", volume: 0.6 };
+        return { available: true, playing: true, title: "One For The Road", artist: "Arctic Monkeys", volume: 0.6, position: 12, length: 200, artUrl: "https://i.scdn.co/image/x", shuffle: true, loop: "none" };
       },
     });
     const client = await authedAs("pc");
@@ -589,8 +589,34 @@ describe("hub devices", () => {
       title: "One For The Road",
       artist: "Arctic Monkeys",
       volume: 0.6,
+      position: 12,
+      length: 200,
+      artUrl: "https://i.scdn.co/image/x",
+      shuffle: true,
+      loop: "none",
     });
     expect(calls).toEqual(["next"]);
+  });
+
+  test("answers a cover request through the injected reader, and says null when it cannot", async () => {
+    await start({ mediaArt: async (url) => (url === "file:///tmp/ok.png" ? "data:image/png;base64,AAAA" : undefined) });
+    const client = await authedAs("pc");
+    await client.next();
+
+    client.socket.send(JSON.stringify({ type: "media_art", url: "file:///tmp/ok.png" }));
+    expect(await client.next()).toEqual({ type: "media_art", url: "file:///tmp/ok.png", data: "data:image/png;base64,AAAA" });
+    client.socket.send(JSON.stringify({ type: "media_art", url: "file:///etc/passwd" }));
+    expect(await client.next()).toEqual({ type: "media_art", url: "file:///etc/passwd", data: null });
+  });
+
+  test("answers null for a cover request when no reader is configured", async () => {
+    await start();
+    const client = await authedAs("pc");
+    await client.next();
+
+    client.socket.send(JSON.stringify({ type: "media_art", url: "file:///tmp/a.png" }));
+
+    expect(await client.next()).toEqual({ type: "media_art", url: "file:///tmp/a.png", data: null });
   });
 
   test("refuses media when no controller is configured or the action is unknown", async () => {

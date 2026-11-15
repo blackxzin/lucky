@@ -487,12 +487,93 @@
     $("scare").textContent = otherDevices(peerAsleep).length > 0 ? "😈 Acordar no susto" : "😱 Assustar";
   }
 
+  const RING_DOTS = 44;
+  const SEEK_W = 200;
+  const SEEK_MID = 8;
+  const SEEK_AMP = 3;
+  const SEEK_WAVELENGTH = 22;
+  const SEEK_STEP = 2;
+  const SEEK_TICK_MS = 120;
+  const LOOP_LABEL = { none: "Repetir: desligado", track: "Repetir: esta faixa", playlist: "Repetir: lista" };
+  const playback = { position: 0, length: 0, at: 0, playing: false };
+  let artKey = "";
+
+  const ring = $("media-ring");
+  for (let i = 0; i < RING_DOTS; i += 1) {
+    const dot = document.createElement("i");
+    dot.style.setProperty("--a", (i * 360) / RING_DOTS + "deg");
+    ring.appendChild(dot);
+  }
+  const ringDots = Array.prototype.slice.call(ring.children);
+
+  function formatClock(seconds) {
+    const total = Math.max(0, Math.floor(seconds));
+    return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+  }
+
+  /** A capa vem por https direto do player (ex.: Spotify) ou, se estiver em disco no PC, o hub a manda como imagem. */
+  function showArt(src) {
+    const img = $("media-img");
+    img.hidden = !src;
+    $("media-note").hidden = Boolean(src);
+    if (src) img.src = src;
+  }
+
+  function applyArt(url) {
+    if (url === artKey) return;
+    artKey = url;
+    showArt("");
+    if (url.startsWith("https://")) showArt(url);
+    else if (url.startsWith("file://")) send({ type: "media_art", url });
+  }
+
   function renderMedia(status) {
     const live = status.available;
     $("media-title").textContent = live ? (status.title || "Sem título") : "Nada tocando";
     $("media-artist").textContent = live ? (status.artist || "–") : "Abra um player no PC";
     $("media-toggle").textContent = live && status.playing ? "⏸" : "▶";
     $("media-volume").textContent = live ? Math.round(status.volume * 100) + "%" : "–";
+    $("media-card").classList.toggle("playing", live && status.playing);
+    const shuffle = $("media-shuffle");
+    shuffle.classList.toggle("on", live && status.shuffle);
+    shuffle.setAttribute("aria-pressed", String(live && status.shuffle));
+    const loop = $("media-loop");
+    loop.classList.toggle("on", live && status.loop !== "none");
+    loop.setAttribute("aria-pressed", String(live && status.loop !== "none"));
+    loop.title = LOOP_LABEL[live ? status.loop : "none"];
+    loop.textContent = live && status.loop === "track" ? "🔂" : "🔁";
+    playback.position = live ? status.position : 0;
+    playback.length = live ? status.length : 0;
+    playback.playing = live && status.playing;
+    playback.at = Date.now();
+    applyArt(live ? status.artUrl : "");
+    tickMedia();
+  }
+
+  function renderMediaArt(message) {
+    if (message.url !== artKey) return;
+    showArt(message.data || "");
+  }
+
+  /** Barra de progresso ondulada (a parte já tocada balança enquanto toca) e anel de pontinhos em volta da capa. */
+  function tickMedia() {
+    const elapsed = playback.playing ? (Date.now() - playback.at) / 1000 : 0;
+    const position = playback.length > 0 ? Math.min(playback.length, playback.position + elapsed) : playback.position + elapsed;
+    const fraction = playback.length > 0 ? position / playback.length : 0;
+    const x = Math.max(0, Math.min(1, fraction)) * SEEK_W;
+    const phase = playback.playing ? Date.now() / 260 : 0;
+    let path = "M0 " + SEEK_MID;
+    for (let px = 0; px <= x; px += SEEK_STEP) {
+      const ease = Math.min(1, px / 12);
+      path += " L" + px.toFixed(1) + " " + (SEEK_MID + SEEK_AMP * ease * Math.sin((px / SEEK_WAVELENGTH) * 2 * Math.PI - phase)).toFixed(2);
+    }
+    $("seek-played").setAttribute("d", path);
+    $("seek-rest").setAttribute("d", "M" + x.toFixed(1) + " " + SEEK_MID + "H" + SEEK_W);
+    $("seek-knob").setAttribute("x", Math.max(0, x - 1.5).toFixed(1));
+    $("media-pos").textContent = playback.length > 0 || playback.playing ? formatClock(position) : "–";
+    $("media-len").textContent = playback.length > 0 ? formatClock(playback.length) : "–";
+    const lit = Math.round(Math.max(0, Math.min(1, fraction)) * RING_DOTS);
+    ringDots.forEach((dot, index) => dot.classList.toggle("on", index < lit));
   }
 
   function formatLeft(ms) {
@@ -580,6 +661,7 @@
     }
     else if (data.type === "peers") { noticePeers(data.devices); peers = data.devices; renderPeers(); }
     else if (data.type === "media") renderMedia(data);
+    else if (data.type === "media_art") renderMediaArt(data);
     else if (data.type === "reminders") { reminderItems = data.items; renderReminders(); }
     else if (data.type === "habits") { habitItems = data.items; renderHabits(); }
     else if (data.type === "asleep") { noticeAsleep(data.devices); renderPeers(); }
@@ -725,6 +807,7 @@
   }
 
   setInterval(() => { tickIdleLife(); tickSocial(); renderMood(); }, 1000);
+  setInterval(() => { if (currentView === "media" && !document.hidden) tickMedia(); }, SEEK_TICK_MS);
   requestAnimationFrame(frame);
   connect();
 })();
