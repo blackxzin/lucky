@@ -33,6 +33,19 @@ roda no PC e o áudio some logo depois. Ações perigosas continuam pedindo apro
 
 Testes: `npm test`.
 
+## Autostart
+
+O pet sobe sozinho quando a sessão gráfica abre (serviço de usuário do systemd). O Electron precisa estar em `~/lucky/pet-desktop/node_modules` (`npm install` lá, ou copie a pasta já instalada).
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp ~/lucky/pet-desktop/deploy/pet-desktop.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now pet-desktop
+```
+
+O endereço do hub vem de `PET_HUB_HOST` no `~/.config/pet-brain/hub.env` (o mesmo do hub). Para desligar: `systemctl --user disable --now pet-desktop`.
+
 ## Hyprland
 
 Janelas sem moldura somem no tiling; deixe-a flutuando e fixa em todos os workspaces.

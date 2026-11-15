@@ -1,0 +1,18 @@
+# Pet do PC (Electron) como serviço de usuário: sobe sozinho quando a sessão gráfica abre.
+# Instalação: README.md, seção "Autostart".
+[Unit]
+Description=Pet do PC (entalho no topo da tela)
+After=graphical-session.target pet-hub.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+# O hub escuta no IP do Tailscale; o pet usa o mesmo endereço (PET_HUB_HOST vem do hub.env).
+EnvironmentFile=-%h/.config/pet-brain/hub.env
+# "$$" chega ao shell como "$": o systemd não expande a variável antes da hora.
+ExecStart=/bin/sh -c 'PET_HUB_URL="http://$${PET_HUB_HOST:-127.0.0.1}:$${PET_HUB_PORT:-8787}" exec "$$HOME/lucky/pet-desktop/node_modules/.bin/electron" --ozone-platform-hint=auto "$$HOME/lucky/pet-desktop"'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

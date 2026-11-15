@@ -78,6 +78,12 @@ function createWindow() {
   return win;
 }
 
+// Só um pet por sessão: o autostart e uma abertura manual não criam dois.
+if (!app.requestSingleInstanceLock()) app.quit();
+
+// Só um pet por sessão: o autostart e uma abertura manual não criam dois.
+if (!app.requestSingleInstanceLock()) app.quit();
+
 app.whenReady().then(() => {
   // A UI não precisa de câmera, microfone, localização etc.
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
