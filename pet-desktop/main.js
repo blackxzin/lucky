@@ -1,5 +1,5 @@
 "use strict";
-const { app, BrowserWindow, ipcMain, session } = require("electron");
+const { app, BrowserWindow, ipcMain, screen, session } = require("electron");
 const { readFileSync } = require("node:fs");
 const { homedir } = require("node:os");
 const { join } = require("node:path");
@@ -7,17 +7,27 @@ const { join } = require("node:path");
 const HUB_URL = process.env.PET_HUB_URL || "http://127.0.0.1:8787";
 const HUB_ORIGIN = new URL(HUB_URL).origin;
 const CONFIG_DIR = process.env.PET_CONFIG_DIR || join(homedir(), ".config", "pet-brain");
+const NOTCH = process.env.PET_NOTCH !== "0";
 const WIDTH = 340;
 const HEIGHT = 520;
+const NOTCH_COLLAPSED = { width: 230, height: 44 };
+const NOTCH_EXPANDED = { width: 560, height: 440 };
 
 function readToken() {
   return readFileSync(join(CONFIG_DIR, "token"), "utf8").trim();
 }
 
+/** Posição no topo, centralizada na tela principal. */
+function notchBounds(size) {
+  const { x, y, width } = screen.getPrimaryDisplay().workArea;
+  return { x: Math.round(x + (width - size.width) / 2), y, width: size.width, height: size.height };
+}
+
 function createWindow() {
+  const start = NOTCH ? notchBounds(NOTCH_COLLAPSED) : { width: WIDTH, height: HEIGHT };
   const win = new BrowserWindow({
-    width: WIDTH,
-    height: HEIGHT,
+    ...start,
+    resizable: !NOTCH,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -39,7 +49,7 @@ function createWindow() {
   win.webContents.on("will-navigate", blockForeign);
   win.webContents.on("will-redirect", blockForeign);
   win.webContents.on("will-frame-navigate", blockForeign);
-  win.loadURL(HUB_URL);
+  win.loadURL(NOTCH ? HUB_URL + "/?notch=1" : HUB_URL);
   return win;
 }
 
@@ -51,7 +61,12 @@ app.whenReady().then(() => {
     if (!sender || new URL(sender).origin !== HUB_ORIGIN) throw new Error("origem não permitida");
     return readToken();
   });
-  createWindow();
+  const win = createWindow();
+  ipcMain.on("pet:notch", (event, expanded) => {
+    const sender = event.senderFrame && event.senderFrame.url;
+    if (!sender || new URL(sender).origin !== HUB_ORIGIN || !NOTCH) return;
+    win.setBounds(notchBounds(expanded ? NOTCH_EXPANDED : NOTCH_COLLAPSED));
+  });
 });
 
 app.on("window-all-closed", () => app.quit());

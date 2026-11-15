@@ -20,6 +20,10 @@
   let fxUntil = 0;
   let lastMood = "sleeping";
   let knownApprovals = 0;
+  let collapseTimer = 0;
+
+  const NOTCH_COLLAPSE_MS = 700;
+  const isNotch = new URLSearchParams(location.search).get("notch") === "1";
 
   async function readToken() {
     try {
@@ -143,6 +147,17 @@
     });
   }
 
+  /** Entalho: abre com o mouse, com foco no campo ou com aprovação pendente; fecha logo depois. */
+  function setNotch(expanded) {
+    if (!isNotch || document.documentElement.classList.contains("collapsed") !== expanded) return;
+    document.documentElement.classList.toggle("collapsed", !expanded);
+    if (window.petHost && window.petHost.notch) window.petHost.notch(expanded);
+  }
+
+  function wantsNotchOpen() {
+    return document.activeElement === $("input") || (state && state.approvals.length > 0) || document.body.matches(":hover");
+  }
+
   function renderState(next) {
     const wasBusy = state && state.busy;
     state = next;
@@ -155,6 +170,7 @@
     $("brain").textContent = "cérebro: " + (next.brain || "–") + " · " + next.reminders + (next.reminders === 1 ? " lembrete" : " lembretes");
     renderApprovals();
     renderMood();
+    if (next.approvals.length > 0) setNotch(true);
   }
 
   function handle(data) {
@@ -230,6 +246,18 @@
       lastActivity = Date.now();
       send({ type: "chat", text: heard });
     };
+  }
+
+  if (isNotch) {
+    document.documentElement.classList.add("notch", "collapsed");
+    const scheduleCollapse = () => {
+      clearTimeout(collapseTimer);
+      collapseTimer = setTimeout(() => { if (!wantsNotchOpen()) setNotch(false); }, NOTCH_COLLAPSE_MS);
+    };
+    document.addEventListener("mouseenter", () => { clearTimeout(collapseTimer); setNotch(true); });
+    document.documentElement.addEventListener("mouseenter", () => { clearTimeout(collapseTimer); setNotch(true); });
+    document.documentElement.addEventListener("mouseleave", scheduleCollapse);
+    $("input").addEventListener("blur", scheduleCollapse);
   }
 
   setInterval(renderMood, 1000);
