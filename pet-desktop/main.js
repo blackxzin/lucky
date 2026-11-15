@@ -20,6 +20,7 @@ function readToken() {
 
 const IN_HYPRLAND = Boolean(process.env.HYPRLAND_INSTANCE_SIGNATURE);
 const WINDOW_CLASS = "pet-desktop";
+const PLACE_RETRY_MS = [500, 1500, 3500];
 
 function hyprEval(code) {
   return new Promise((resolve) => {
@@ -71,7 +72,8 @@ function createWindow() {
   win.webContents.on("will-redirect", blockForeign);
   win.webContents.on("will-frame-navigate", blockForeign);
   win.loadURL(NOTCH ? HUB_URL + "/?notch=1" : HUB_URL);
-  if (NOTCH) win.once("show", () => setTimeout(() => placeInHyprland(notchBounds(NOTCH_COLLAPSED)), 300));
+  // O Hyprland só conhece a janela depois de mapeada: tenta algumas vezes logo após abrir.
+  if (NOTCH) win.webContents.once("did-finish-load", () => PLACE_RETRY_MS.forEach((ms) => setTimeout(() => placeInHyprland(notchBounds(NOTCH_COLLAPSED)), ms)));
   return win;
 }
 
