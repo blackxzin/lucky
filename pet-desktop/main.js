@@ -1,5 +1,6 @@
 "use strict";
 const { app, BrowserWindow, ipcMain, screen, session } = require("electron");
+const { execFile } = require("node:child_process");
 const { readFileSync } = require("node:fs");
 const { homedir } = require("node:os");
 const { join } = require("node:path");
@@ -15,6 +16,29 @@ const NOTCH_EXPANDED = { width: 560, height: 440 };
 
 function readToken() {
   return readFileSync(join(CONFIG_DIR, "token"), "utf8").trim();
+}
+
+const IN_HYPRLAND = Boolean(process.env.HYPRLAND_INSTANCE_SIGNATURE);
+const WINDOW_CLASS = "pet-desktop";
+
+function hyprctl(args) {
+  return new Promise((resolve) => {
+    execFile("hyprctl", args, { timeout: 2000 }, (error, stdout) => resolve(error ? null : stdout));
+  });
+}
+
+/** No Wayland o app não escolhe a própria posição; o Hyprland sim. Só mexe na janela do pet, sem tocar na config. */
+async function placeInHyprland(bounds) {
+  if (!IN_HYPRLAND) return;
+  const target = "class:^(" + WINDOW_CLASS + ")$";
+  await hyprctl(["dispatch", "resizewindowpixel", "exact " + bounds.width + " " + bounds.height + "," + target]);
+  await hyprctl(["dispatch", "movewindowpixel", "exact " + bounds.x + " " + bounds.y + "," + target]);
+  const clients = await hyprctl(["clients", "-j"]);
+  try {
+    const mine = JSON.parse(clients).find((client) => client.class === WINDOW_CLASS);
+    if (mine && !mine.floating) await hyprctl(["dispatch", "togglefloating", "address:" + mine.address]);
+    if (mine && !mine.pinned) await hyprctl(["dispatch", "pin", "address:" + mine.address]);
+  } catch (error) { /* sem hyprctl: segue com a posição do sistema */ }
 }
 
 /** Posição no topo, centralizada na tela principal. */
@@ -50,6 +74,7 @@ function createWindow() {
   win.webContents.on("will-redirect", blockForeign);
   win.webContents.on("will-frame-navigate", blockForeign);
   win.loadURL(NOTCH ? HUB_URL + "/?notch=1" : HUB_URL);
+  if (NOTCH) win.once("show", () => setTimeout(() => placeInHyprland(notchBounds(NOTCH_COLLAPSED)), 300));
   return win;
 }
 
@@ -65,7 +90,9 @@ app.whenReady().then(() => {
   ipcMain.on("pet:notch", (event, expanded) => {
     const sender = event.senderFrame && event.senderFrame.url;
     if (!sender || new URL(sender).origin !== HUB_ORIGIN || !NOTCH) return;
-    win.setBounds(notchBounds(expanded ? NOTCH_EXPANDED : NOTCH_COLLAPSED));
+    const bounds = notchBounds(expanded ? NOTCH_EXPANDED : NOTCH_COLLAPSED);
+    win.setBounds(bounds);
+    placeInHyprland(bounds);
   });
 });
 
