@@ -264,6 +264,29 @@ describe("hub core", () => {
     ]);
   });
 
+  test("the owner can add, list and cancel reminders and every client hears about it", async () => {
+    const hub = core();
+    clock = new Date("2026-11-10T12:00:00.000Z");
+    const timed = createHubCore({ agent: { send: async () => ({ text: "x", sessionId: undefined }) }, approvals, audit: { record: async () => undefined, recent: async () => [], between: async () => [] }, reminders, vaultRoot, petName: "Bit", now: () => clock });
+    timed.subscribe((event) => events.push(event));
+
+    await timed.addReminder("beber água", 30);
+    const [added] = await timed.listReminders();
+
+    expect(added).toMatchObject({ text: "beber água", dueAt: "2026-11-10T12:30:00.000Z" });
+    expect(events.filter((event) => event.type === "state").at(-1)).toMatchObject({ state: { reminders: 1 } });
+    await timed.cancelReminder(added?.id ?? "");
+    expect(await timed.listReminders()).toEqual([]);
+    expect(events.filter((event) => event.type === "state").at(-1)).toMatchObject({ state: { reminders: 0 } });
+    void hub;
+  });
+
+  test("a reminder in the past is refused", async () => {
+    const timed = createHubCore({ agent: { send: async () => ({ text: "x", sessionId: undefined }) }, approvals, audit: { record: async () => undefined, recent: async () => [], between: async () => [] }, reminders, vaultRoot, petName: "Bit", now: () => clock });
+
+    await expect(timed.addReminder("x", 0)).rejects.toThrow();
+  });
+
   test("tick delivers a due reminder to the chat once", async () => {
     const hub = core();
     await reminders.add({ text: "tomar água", dueAt: new Date(clock.getTime() + 60_000) });

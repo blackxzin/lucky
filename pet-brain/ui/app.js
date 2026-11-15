@@ -28,8 +28,31 @@
   const SUGGESTIONS = ["toca uma música", "como está meu PC?", "me lembra de beber água em 30 minutos", "anota que preciso comprar café", "conta uma piada"];
   /** Quem sou eu para o hub: o Electron é o PC, o app Android é o celular. */
   const device = window.petHost ? "pc" : window.PetHost ? "phone" : undefined;
+  /** Cada pet tem o seu jeito: o do PC é descolado, o do celular é fofo. Muda a cor do olho, a reação e o tom das falas. */
+  const PERSONALITY = {
+    pc: {
+      eye: "#5ff2ff",
+      joined: (who) => who + " apareceu. Finalmente. 😎",
+      left: (who) => who + " sumiu. Tá, tanto faz.",
+      poke: { fx: "confused", happy: false, text: (who) => who + " me cutucou. Sério? 😏" },
+      wave: { fx: "blink", happy: false, text: (who) => who + " mandou um oi. Oi. 😎" },
+    },
+    phone: {
+      eye: "#ff9ecb",
+      joined: (who) => who + " chegou! 💕",
+      left: (who) => who + " foi embora 🥺",
+      poke: { fx: "surprised", happy: true, text: (who) => who + " me cutucou! 🥰" },
+      wave: { fx: "blink", happy: true, text: (who) => who + " mandou um oi! 💖" },
+    },
+  };
+  const personality = PERSONALITY[device] || PERSONALITY.pc;
+  document.documentElement.style.setProperty("--eye", personality.eye);
   let peers = [];
+  let peersKnown = false;
   let currentView = "home";
+  let reminderItems = [];
+  let knownReminderCount = -1;
+  const TIMER_PRESETS = [1, 5, 10, 25];
   const isNotch = new URLSearchParams(location.search).get("notch") === "1";
 
   async function readToken() {
@@ -178,6 +201,22 @@
     renderApprovals();
     renderMood();
     if (next.approvals.length > 0) setNotch(true);
+    if (next.reminders !== knownReminderCount) { knownReminderCount = next.reminders; if (isNotch) send({ type: "reminders" }); }
+  }
+
+  /** Avisa quando o outro pet entra ou sai; a primeira lista (ao conectar) só mostra quem já estava. */
+  function noticePeers(next) {
+    if (!peersKnown) { peersKnown = true; return; }
+    const others = (list) => list.filter((name) => name !== device);
+    const before = others(peers);
+    others(next).filter((name) => !before.includes(name)).forEach((name) => {
+      fx("surprised");
+      happyUntil = Date.now() + HAPPY_MS;
+      addMessage({ role: "system", text: personality.joined(DEVICE_LABELS[name] || "Aparelho") });
+    });
+    before.filter((name) => !others(next).includes(name)).forEach((name) => {
+      addMessage({ role: "system", text: personality.left(DEVICE_LABELS[name] || "Aparelho") });
+    });
   }
 
   function renderPeers() {
@@ -193,6 +232,7 @@
     badge.hidden = peers.length < 2;
     badge.textContent = String(peers.length);
     $("poke").disabled = others === 0;
+    $("wave").disabled = others === 0;
   }
 
   function renderMedia(status) {
@@ -203,13 +243,46 @@
     $("media-volume").textContent = live ? Math.round(status.volume * 100) + "%" : "–";
   }
 
+  function formatLeft(ms) {
+    const total = Math.max(0, Math.ceil(ms / 1000));
+    if (total < 3600) return String(Math.floor(total / 60)).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
+    const hours = Math.floor(total / 3600);
+    return hours + "h " + String(Math.floor((total % 3600) / 60)).padStart(2, "0") + "min";
+  }
+
+  function renderReminders() {
+    const list = $("reminder-list");
+    list.replaceChildren();
+    if (reminderItems.length === 0) {
+      list.appendChild(el("li", "muted", "Nenhum lembrete ou timer."));
+      return;
+    }
+    reminderItems.forEach((item) => {
+      const row = el("li", "reminder");
+      row.append(el("span", "left", formatLeft(Date.parse(item.dueAt) - Date.now())), el("span", "text", item.text));
+      const cancel = el("button", "icon deny", "✕");
+      cancel.type = "button";
+      cancel.setAttribute("aria-label", "Cancelar " + item.text);
+      cancel.addEventListener("click", () => send({ type: "reminder_cancel", id: item.id }));
+      row.appendChild(cancel);
+      list.appendChild(row);
+    });
+  }
+
+  function addReminder(text, minutes) {
+    const clean = String(text).trim();
+    if (!clean || !Number.isInteger(minutes) || minutes < 1) return;
+    send({ type: "reminder_add", text: clean, inMinutes: minutes });
+  }
+
   function askMedia(action) { send({ type: "media", action }); }
 
   function showView(view) {
     currentView = view;
-    ["home", "media", "peers"].forEach((name) => { $("view-" + name).hidden = name !== view; });
+    ["home", "reminders", "media", "peers"].forEach((name) => { $("view-" + name).hidden = name !== view; });
     document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("on", tab.dataset.view === view));
     if (view === "media") askMedia("status");
+    if (view === "reminders") send({ type: "reminders" });
   }
 
   function handle(data) {
@@ -223,11 +296,15 @@
       addMessage(data.message);
       fx(data.message.role === "system" ? "confused" : "blink");
     }
-    else if (data.type === "peers") { peers = data.devices; renderPeers(); }
+    else if (data.type === "peers") { noticePeers(data.devices); peers = data.devices; renderPeers(); }
     else if (data.type === "media") renderMedia(data);
+    else if (data.type === "reminders") { reminderItems = data.items; renderReminders(); }
     else if (data.type === "signal") {
-      fx("surprised");
-      addMessage({ role: "system", text: (DEVICE_LABELS[data.from] || "Aparelho") + " te cutucou 👋" });
+      const who = DEVICE_LABELS[data.from] || "Aparelho";
+      const reaction = data.kind === "wave" ? personality.wave : personality.poke;
+      fx(reaction.fx);
+      if (reaction.happy) happyUntil = Date.now() + HAPPY_MS;
+      addMessage({ role: "system", text: reaction.text(who) });
     }
     else if (data.type === "error") addMessage({ role: "system", text: data.text });
   }
@@ -306,8 +383,22 @@
     document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => showView(tab.dataset.view)));
     document.querySelectorAll("[data-media]").forEach((button) => button.addEventListener("click", () => askMedia(button.dataset.media)));
     $("poke").addEventListener("click", () => send({ type: "signal", kind: "poke" }));
+    $("wave").addEventListener("click", () => send({ type: "signal", kind: "wave" }));
     setInterval(() => { if (currentView === "media" && !document.hidden) askMedia("status"); }, MEDIA_POLL_MS);
+    TIMER_PRESETS.forEach((minutes) => {
+      const button = el("button", "chip", "⏱ " + minutes + " min");
+      button.type = "button";
+      button.addEventListener("click", () => addReminder("⏱ Timer de " + minutes + " min", minutes));
+      $("timer-presets").appendChild(button);
+    });
+    $("reminder-form").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      addReminder($("reminder-text").value, Number.parseInt($("reminder-min").value, 10));
+      $("reminder-text").value = "";
+    });
+    setInterval(() => { if (currentView === "reminders" && !document.hidden) renderReminders(); }, 1000);
     renderPeers();
+    renderReminders();
     document.documentElement.classList.add("notch", "collapsed");
     const scheduleCollapse = () => {
       clearTimeout(collapseTimer);

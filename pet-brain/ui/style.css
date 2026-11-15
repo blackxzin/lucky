@@ -19,7 +19,7 @@ svg.pet .bezel { fill:#2a2f3b; }
 svg.pet .screen { fill:#06090d; }
 svg.pet .led { fill:var(--ok); }
 svg.pet .eyes { will-change:transform; }
-svg.pet .eye { fill:#5ff2ff; transform-box:fill-box; transform-origin:center; animation:blink 5s infinite; }
+svg.pet .eye { fill:var(--eye, #5ff2ff); transform-box:fill-box; transform-origin:center; animation:blink 5s infinite; }
 svg.pet .eye-r { animation-delay:.03s; }
 svg.pet.mood-thinking .eye { fill:#ffd166; animation:none; transform:scaleY(.5); }
 svg.pet.mood-thinking .led { fill:#ffd166; animation:pulse .8s infinite; }
@@ -96,3 +96,11 @@ html.notch, html.notch body { background:transparent; }
 .peer-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
 .peer-list li { display:flex; align-items:center; gap:8px; }
 .peer-list .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); }
+.row { display:flex; gap:8px; }
+.row button:disabled { opacity:.4; cursor:default; }
+.reminder-list { list-style:none; margin:0; padding:0; flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+.reminder { display:flex; align-items:center; gap:10px; background:var(--card); border-radius:10px; padding:8px 10px; }
+.reminder .left { font-variant-numeric:tabular-nums; color:var(--ok); font-weight:700; min-width:64px; }
+.reminder .text { flex:1; min-width:0; overflow-wrap:anywhere; }
+.icon { min-width:32px; min-height:32px; padding:0; border-radius:8px; }
+input.min { flex:0 0 72px; }

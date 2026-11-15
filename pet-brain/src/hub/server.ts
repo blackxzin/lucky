@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
+import { UserFacingError } from "../errors.js";
 import type { HubCore, HubState } from "./core.js";
 import { createLockout } from "./lockout.js";
 import type { MediaController } from "./media.js";
@@ -254,6 +255,21 @@ export function createHubServer(options: HubServerOptions): HubServer {
     if (message.type === "signal") {
       const from = devices.get(socket) ?? "unknown";
       authenticated.forEach((other) => other !== socket && send(other, { type: "signal", kind: message.kind, from }));
+      return;
+    }
+    if (message.type === "reminders") {
+      core.listReminders().then(
+        (items) => send(socket, { type: "reminders", items }),
+        (error: unknown) => logError("falha ao listar lembretes", error),
+      );
+      return;
+    }
+    if (message.type === "reminder_add" || message.type === "reminder_cancel") {
+      const work = message.type === "reminder_add" ? core.addReminder(message.text, message.inMinutes) : core.cancelReminder(message.id);
+      work.catch((error: unknown) => {
+        if (error instanceof UserFacingError) send(socket, { type: "error", text: error.message });
+        else logError("falha ao mexer em lembrete", error);
+      });
       return;
     }
     if (message.type === "media") {

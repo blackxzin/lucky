@@ -30,6 +30,7 @@
     </header>
     <nav id="tabs" class="tabs" aria-label="Seções" hidden>
       <button type="button" class="tab on" data-view="home">🏠 Início</button>
+      <button type="button" class="tab" data-view="reminders">⏰ Lembretes</button>
       <button type="button" class="tab" data-view="media">🎵 Música</button>
       <button type="button" class="tab" data-view="peers">🔗 Aparelhos <span id="peer-count" class="badge" hidden></span></button>
     </nav>
@@ -43,6 +44,15 @@
         <input id="input" type="text" maxlength="8000" placeholder="Fala com o pet…" aria-label="Mensagem">
         <button id="mic" class="mic" type="button" aria-label="Microfone (ligar ou desligar)" hidden>🎤</button>
         <button type="submit">Enviar</button>
+      </form>
+    </section>
+    <section id="view-reminders" class="view" hidden>
+      <div id="timer-presets" class="chips" aria-label="Timers rápidos"></div>
+      <ul id="reminder-list" class="reminder-list" aria-live="polite"></ul>
+      <form id="reminder-form" class="form" autocomplete="off">
+        <input id="reminder-text" type="text" maxlength="200" placeholder="Me lembra de…" aria-label="Texto do lembrete" required>
+        <input id="reminder-min" class="min" type="number" min="1" max="525600" value="30" aria-label="Minutos">
+        <button type="submit">Agendar</button>
       </form>
     </section>
     <section id="view-media" class="view" hidden>
@@ -68,7 +78,10 @@
       <div class="card">
         <strong>Aparelhos conectados</strong>
         <ul id="peer-list" class="peer-list"></ul>
-        <button type="button" id="poke">👋 Cutucar o outro pet</button>
+        <div class="row">
+          <button type="button" id="wave">👋 Dar oi</button>
+          <button type="button" id="poke">👉 Cutucar</button>
+        </div>
       </div>
     </section>
   </div>

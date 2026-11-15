@@ -1,7 +1,7 @@
 import { UserFacingError } from "../errors.js";
 import type { Approval, ApprovalStore } from "../pc/approvals.js";
 import type { AuditLog } from "../pc/audit.js";
-import type { ReminderStore } from "../reminders/store.js";
+import type { Reminder, ReminderStore } from "../reminders/store.js";
 import { vaultStats, type VaultStats } from "../vault/read.js";
 import type { Agent } from "./agent.js";
 
@@ -52,6 +52,10 @@ export interface HubCore {
   /** Relê as aprovações pendentes e avisa os clientes se algo mudou. */
   refresh(): Promise<void>;
   snapshot(): Promise<HubSnapshot>;
+  listReminders(): Promise<Reminder[]>;
+  /** Agenda um lembrete daqui a `inMinutes`; todos os clientes recebem o estado novo. */
+  addReminder(text: string, inMinutes: number): Promise<void>;
+  cancelReminder(id: string): Promise<void>;
   subscribe(listener: (event: HubEvent) => void): () => void;
 }
 
@@ -69,6 +73,8 @@ function toPending(approval: Approval): PendingApproval {
   const { id, tool, action, risk, reason, expiresAt } = approval;
   return { id, tool, action, risk, reason, expiresAt };
 }
+
+const MS_PER_MINUTE = 60_000;
 
 export function createHubCore(options: HubCoreOptions): HubCore {
   const { agent, approvals, audit, reminders, vaultRoot, petName, now = () => new Date() } = options;
@@ -176,6 +182,18 @@ export function createHubCore(options: HubCoreOptions): HubCore {
     },
 
     snapshot: async () => ({ state: await readState(), history: [...history] }),
+
+    listReminders: () => reminders.list(),
+
+    addReminder: async (text, inMinutes) => {
+      await reminders.add({ text, dueAt: new Date(now().getTime() + inMinutes * MS_PER_MINUTE) });
+      await emitState();
+    },
+
+    cancelReminder: async (id) => {
+      await reminders.remove(id);
+      await emitState();
+    },
 
     refresh: async () => {
       const key = (await approvals.list()).map((approval) => approval.id).join(",");

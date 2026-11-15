@@ -8,6 +8,7 @@ import type { HubCore, HubEvent, HubSnapshot } from "../src/hub/core.js";
 import { buildMcpConfig } from "../src/hub/mcp-config.js";
 import { createHubServer, type HubServer } from "../src/hub/server.js";
 import { loadConfig } from "../src/config.js";
+import { UserFacingError } from "../src/errors.js";
 
 const TOKEN = "a".repeat(64);
 
@@ -20,6 +21,7 @@ interface FakeCore extends HubCore {
   chats: string[];
   decisions: Array<[string, boolean]>;
   refreshes: number;
+  reminderCalls: string[];
   emit(event: HubEvent): void;
 }
 
@@ -29,6 +31,10 @@ function fakeCore(): FakeCore {
     chats: [],
     decisions: [],
     refreshes: 0,
+    reminderCalls: [],
+    listReminders: async () => [{ id: "a".repeat(16), text: "água", dueAt: "2026-11-10T12:30:00.000Z" }],
+    addReminder: async (text, inMinutes) => void core.reminderCalls.push(`add:${text}:${inMinutes}`),
+    cancelReminder: async (id) => void core.reminderCalls.push(`cancel:${id}`),
     emit: (event) => listeners.forEach((listener) => listener(event)),
     chat: async (text) => void core.chats.push(text),
     decide: async (id, approved) => void core.decisions.push([id, approved]),
@@ -541,5 +547,58 @@ describe("hub devices", () => {
     expect((await client.next()).type).toBe("error");
     client.socket.send(JSON.stringify({ type: "media", action: "rm -rf" }));
     expect((await client.next()).type).toBe("error");
+  });
+});
+
+describe("hub reminders", () => {
+  async function authedClient(): Promise<Client> {
+    const client = await open();
+    client.socket.send(JSON.stringify({ type: "auth", token: TOKEN }));
+    expect((await client.next()).type).toBe("hello");
+    return client;
+  }
+
+  test("lists the pending reminders on request", async () => {
+    await start();
+    const client = await authedClient();
+
+    client.socket.send(JSON.stringify({ type: "reminders" }));
+
+    expect(await client.next()).toEqual({
+      type: "reminders",
+      items: [{ id: "a".repeat(16), text: "água", dueAt: "2026-11-10T12:30:00.000Z" }],
+    });
+  });
+
+  test("adds and cancels through the core", async () => {
+    await start();
+    const client = await authedClient();
+
+    client.socket.send(JSON.stringify({ type: "reminder_add", text: "água", inMinutes: 30 }));
+    client.socket.send(JSON.stringify({ type: "reminder_cancel", id: "b".repeat(16) }));
+    client.socket.send(JSON.stringify({ type: "ping" }));
+
+    expect((await client.next()).type).toBe("pong");
+    expect(core.reminderCalls).toEqual(["add:água:30", "cancel:" + "b".repeat(16)]);
+  });
+
+  test("rejects malformed reminder requests", async () => {
+    await start();
+    const client = await authedClient();
+
+    client.socket.send(JSON.stringify({ type: "reminder_add", text: "x", inMinutes: 0 }));
+    expect((await client.next()).type).toBe("error");
+    client.socket.send(JSON.stringify({ type: "reminder_cancel", id: "../x" }));
+    expect((await client.next()).type).toBe("error");
+  });
+
+  test("tells the sender when the core refuses a reminder", async () => {
+    await start();
+    core.addReminder = async () => Promise.reject(new UserFacingError("Lembrete no passado."));
+    const client = await authedClient();
+
+    client.socket.send(JSON.stringify({ type: "reminder_add", text: "x", inMinutes: 5 }));
+
+    expect(await client.next()).toEqual({ type: "error", text: "Lembrete no passado." });
   });
 });

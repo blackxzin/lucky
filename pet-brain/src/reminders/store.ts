@@ -31,6 +31,8 @@ export interface ReminderStore {
   list(): Promise<Reminder[]>;
   /** Entrega cada lembrete vencido uma única vez, mesmo com dois processos olhando a pasta. */
   takeDue(): Promise<Reminder[]>;
+  /** Cancela um lembrete pendente. `false` se ele não existe (já venceu ou foi cancelado). */
+  remove(id: string): Promise<boolean>;
 }
 
 async function readReminder(path: string): Promise<Reminder | undefined> {
@@ -87,6 +89,17 @@ export function createReminderStore(options: { dir: string; now?: () => Date }):
     },
 
     list: async () => (await readAll()).map((entry) => entry.reminder),
+
+    remove: async (id) => {
+      if (!ID_PATTERN.test(id)) throw new ReminderError("Id de lembrete inválido.");
+      return rm(join(dir, `${id}${RECORD_SUFFIX}`)).then(
+        () => true,
+        (error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return false;
+          throw error;
+        },
+      );
+    },
 
     takeDue: async () => {
       const limit = now().getTime();

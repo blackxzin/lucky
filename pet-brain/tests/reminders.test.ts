@@ -28,6 +28,21 @@ describe("reminder store", () => {
     expect((await reminders.list()).map((item) => item.text)).toEqual(["antes", "depois"]);
   });
 
+  test("cancels a pending reminder by id", async () => {
+    const reminders = store();
+    const keep = await reminders.add({ text: "fica", dueAt: minutes(10) });
+    const drop = await reminders.add({ text: "sai", dueAt: minutes(5) });
+
+    expect(await reminders.remove(drop.id)).toBe(true);
+
+    expect((await reminders.list()).map((item) => item.id)).toEqual([keep.id]);
+    expect(await reminders.remove(drop.id)).toBe(false);
+  });
+
+  test("refuses an id that is not a reminder id", async () => {
+    await expect(store().remove("../../etc/passwd")).rejects.toThrow(ReminderError);
+  });
+
   test("hands out a due reminder exactly once", async () => {
     const reminders = store();
     await reminders.add({ text: "agua", dueAt: minutes(1) });
