@@ -69,8 +69,15 @@ function parseWebUrl(raw: string): URL {
   return url;
 }
 
+/**
+ * Programa gráfico herda stdout/stderr e nunca fecha os pipes: o runner ficaria esperando até o timeout e mataria o app.
+ * Por isso o lançador sobe numa sessão própria (`setsid -f`) com as saídas jogadas fora. O alvo vai como argumento
+ * posicional do `sh`, nunca dentro do texto do script, então nada do pedido vira comando.
+ */
+const DETACH_SCRIPT = 'exec "$@" >/dev/null 2>&1 </dev/null';
+
 async function openWith(deps: ServerDeps, bin: string, args: readonly string[]): Promise<void> {
-  const result = await deps.run(bin, args, { timeoutMs: OPEN_TIMEOUT_MS });
+  const result = await deps.run("setsid", ["-f", "sh", "-c", DETACH_SCRIPT, "sh", bin, ...args], { timeoutMs: OPEN_TIMEOUT_MS });
   if (result.exitCode !== 0) throw new ToolError(`Não consegui abrir (${bin} saiu com ${String(result.exitCode)}).`);
 }
 
@@ -91,7 +98,7 @@ export const registerOpenTools: ToolRegistrar = (server, deps) => {
           classification: auto("programa da lista"),
           approvalId: undefined,
           execute: async () => {
-            await openWith(deps, "setsid", ["-f", APPS[app]]);
+            await openWith(deps, APPS[app], []);
             return `Abri ${app}.`;
           },
         }),

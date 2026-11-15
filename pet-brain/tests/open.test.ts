@@ -8,6 +8,8 @@ beforeEach(async () => {
 afterEach(() => sandbox.cleanup());
 
 const opened = (calls: ReturnType<typeof fakeRun>["calls"]) => calls.map((entry) => [entry.bin, ...entry.args]);
+/** Lançador desacoplado: o alvo vai como argumento posicional, fora do texto do script. */
+const launch = (...target: string[]) => ["setsid", "-f", "sh", "-c", 'exec "$@" >/dev/null 2>&1 </dev/null', "sh", ...target];
 
 describe("pc_open_app", () => {
   test("launches an allowed app detached, without a shell", async () => {
@@ -17,7 +19,7 @@ describe("pc_open_app", () => {
     const result = await call(client, "pc_open_app", { app: "firefox" });
 
     expect(result.isError).toBe(false);
-    expect(opened(calls)).toEqual([["setsid", "-f", "firefox"]]);
+    expect(opened(calls)).toEqual([launch("firefox")]);
     expect(sandbox.audited[0]).toMatchObject({ tool: "pc_open_app", action: "firefox", decision: "auto" });
   });
 
@@ -37,7 +39,7 @@ describe("pc_search", () => {
 
     await call(client, "pc_search", { query: "receita de bolo & café" });
 
-    expect(opened(calls)).toEqual([["xdg-open", "https://duckduckgo.com/?q=receita%20de%20bolo%20%26%20caf%C3%A9"]]);
+    expect(opened(calls)).toEqual([launch("xdg-open", "https://duckduckgo.com/?q=receita%20de%20bolo%20%26%20caf%C3%A9")]);
   });
 
   test("can search on YouTube", async () => {
@@ -46,7 +48,7 @@ describe("pc_search", () => {
 
     await call(client, "pc_search", { query: "arctic monkeys", engine: "youtube" });
 
-    expect(opened(calls)).toEqual([["xdg-open", "https://www.youtube.com/results?search_query=arctic%20monkeys"]]);
+    expect(opened(calls)).toEqual([launch("xdg-open", "https://www.youtube.com/results?search_query=arctic%20monkeys")]);
   });
 
   test("never sends a secret to a search engine", async () => {
@@ -67,7 +69,7 @@ describe("pc_open_url", () => {
 
     await call(client, "pc_open_url", { url: "https://www.youtube.com/watch?v=abc" });
 
-    expect(opened(calls)).toEqual([["xdg-open", "https://www.youtube.com/watch?v=abc"]]);
+    expect(opened(calls)).toEqual([launch("xdg-open", "https://www.youtube.com/watch?v=abc")]);
   });
 
   test("asks the owner before opening an unknown site, then opens it once", async () => {
@@ -82,7 +84,7 @@ describe("pc_open_url", () => {
     await sandbox.approvals.decide(approvalIdIn(asked.text), true);
     await call(client, "pc_open_url", { url, approvalId: approvalIdIn(asked.text) });
 
-    expect(opened(calls)).toEqual([["xdg-open", url]]);
+    expect(opened(calls)).toEqual([launch("xdg-open", url)]);
   });
 
   test.each(["http://www.youtube.com/", "javascript:alert(1)", "file:///etc/passwd", "https://user:pass@www.youtube.com/", "https://www.youtube.com/?t=ghp_" + "a".repeat(36)])(
@@ -105,7 +107,7 @@ describe("whatsapp_draft", () => {
     const result = await call(client, "whatsapp_draft", { phone: "5511999998888", text: "to chegando, 10 min" });
 
     expect(result.text).toMatch(/enter|enviar/i);
-    expect(opened(calls)).toEqual([["xdg-open", "https://web.whatsapp.com/send?phone=5511999998888&text=to%20chegando%2C%2010%20min"]]);
+    expect(opened(calls)).toEqual([launch("xdg-open", "https://web.whatsapp.com/send?phone=5511999998888&text=to%20chegando%2C%2010%20min")]);
   });
 
   test.each(["+55 11 99999-8888", "abc", "123", "5511999998888; rm"])("refuses the phone %j", async (phone) => {
