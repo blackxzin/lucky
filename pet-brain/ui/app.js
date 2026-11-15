@@ -21,6 +21,7 @@
   let lastMood = "sleeping";
   let knownApprovals = 0;
   let collapseTimer = 0;
+  let micBusy = false;
 
   const NOTCH_COLLAPSE_MS = 700;
   const MEDIA_POLL_MS = 3000;
@@ -185,7 +186,7 @@
   }
 
   function wantsNotchOpen() {
-    return document.activeElement === $("input") || (state && state.approvals.length > 0) || document.body.matches(":hover");
+    return micBusy || document.activeElement === $("input") || (state && state.approvals.length > 0) || document.body.matches(":hover");
   }
 
   function renderState(next) {
@@ -351,13 +352,17 @@
     minimize.addEventListener("click", () => window.PetHost.minimize());
   }
 
-  // Microfone como o de jogo: o botão liga/desliga. Ligado, o app nativo ouve frase por frase e manda ao chat.
-  if (window.PetHost && window.PetHost.listen) {
+  // Microfone. No celular (app Android) liga e desliga e ouve frase por frase; no PC (Electron) um toque
+  // grava, outro toque para e o whisper local transcreve. Nos dois, o texto entendido vai direto ao chat.
+  const hostListen = window.PetHost && window.PetHost.listen ? () => window.PetHost.listen()
+    : window.petHost && window.petHost.listen ? () => window.petHost.listen() : null;
+  if (hostListen) {
     const mic = $("mic");
     mic.hidden = false;
     mic.setAttribute("aria-pressed", "false");
-    mic.addEventListener("click", () => window.PetHost.listen());
+    mic.addEventListener("click", hostListen);
     window.petMic = (on) => {
+      micBusy = on;
       mic.classList.toggle("on", on);
       mic.setAttribute("aria-pressed", String(on));
       mic.textContent = on ? "🔴" : "🎤";
@@ -368,6 +373,14 @@
       lastActivity = Date.now();
       send({ type: "chat", text: heard });
     };
+    if (window.petHost && window.petHost.onMic) {
+      window.petHost.onMic((state) => {
+        window.petMic(state === "on");
+        if (state === "transcribing") { micBusy = true; mic.textContent = "⏳"; }
+      });
+      window.petHost.onVoice((text) => window.petVoice(text));
+      window.petHost.onVoiceError((text) => addMessage({ role: "system", text }));
+    }
   }
 
   if (isNotch) {

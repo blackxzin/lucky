@@ -21,6 +21,18 @@ Ele se identifica ao hub como `pc`; o app do celular como `phone`. Na aba Aparel
 dá para cutucar o outro pet, e o chat e o humor já são compartilhados pelo hub.
 A aba Música controla o player do PC (MPRIS) pelo `playerctl`, no hub.
 
+## Voz
+
+O botão 🎤 do painel grava com o `pw-record`; um segundo toque (ou 30 s) para e o
+`whisper-cli` (whisper.cpp) transcreve em português. O texto vai direto ao chat. Tudo
+roda no PC e o áudio some logo depois. Ações perigosas continuam pedindo aprovação.
+
+- `PET_WHISPER_MODEL`: modelo ggml (padrão `~/.local/share/whisper.cpp/ggml-base.bin`).
+  Um modelo maior (`small`) entende melhor.
+- `PET_MIC_SOURCE`: fonte de áudio do PipeWire (padrão: o microfone padrão do sistema).
+
+Testes: `npm test`.
+
 ## Hyprland
 
 Janelas sem moldura somem no tiling; deixe-a flutuando e fixa em todos os workspaces.

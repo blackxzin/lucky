@@ -4,6 +4,7 @@ const { execFile } = require("node:child_process");
 const { readFileSync } = require("node:fs");
 const { homedir } = require("node:os");
 const { join } = require("node:path");
+const { createVoice } = require("./voice");
 
 const HUB_URL = process.env.PET_HUB_URL || "http://127.0.0.1:8787";
 const HUB_ORIGIN = new URL(HUB_URL).origin;
@@ -86,6 +87,16 @@ app.whenReady().then(() => {
     return readToken();
   });
   const win = createWindow();
+  const voice = createVoice({
+    onState: (state) => win.webContents.send("pet:mic", state),
+    onText: (text) => win.webContents.send("pet:voice", text),
+    onError: (text) => win.webContents.send("pet:voice-error", text),
+  });
+  ipcMain.on("pet:listen", (event) => {
+    const sender = event.senderFrame && event.senderFrame.url;
+    if (sender && new URL(sender).origin === HUB_ORIGIN) voice.toggle();
+  });
+  win.on("closed", () => voice.dispose());
   ipcMain.on("pet:notch", (event, expanded) => {
     const sender = event.senderFrame && event.senderFrame.url;
     if (!sender || new URL(sender).origin !== HUB_ORIGIN || !NOTCH) return;
