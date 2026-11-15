@@ -89,6 +89,7 @@ app.whenReady().then(() => {
   const win = createWindow();
   const voice = createVoice({
     onState: (state) => win.webContents.send("pet:mic", state),
+    onLevel: (level) => win.webContents.send("pet:level", level),
     onText: (text) => win.webContents.send("pet:voice", text),
     onError: (text) => win.webContents.send("pet:voice-error", text),
   });

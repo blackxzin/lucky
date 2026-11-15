@@ -130,7 +130,26 @@
     gaze.x += (gaze.targetX - gaze.x) * k;
     gaze.y += (gaze.targetY - gaze.y) * k;
     eyes.style.transform = "translate3d(" + gaze.x.toFixed(2) + "px, " + gaze.y.toFixed(2) + "px, 0)";
+    renderWave(now);
     requestAnimationFrame(frame);
+  }
+
+  const WAVE_SHAPE = [0.4, 0.6, 0.8, 0.95, 1, 0.95, 0.8, 0.6, 0.4];
+  const WAVE_MIN_PX = 4;
+  const WAVE_MAX_PX = 26;
+  const waveBars = Array.prototype.slice.call(document.querySelectorAll("#wave i"));
+  const waveState = { target: 0, shown: 0 };
+
+  /** Cada barra segue o volume da voz, com um balanço próprio para parecer fala e não um bloco só. */
+  function renderWave(now) {
+    if (!document.documentElement.classList.contains("recording")) return;
+    waveState.target *= 0.9;
+    waveState.shown += (waveState.target - waveState.shown) * 0.4;
+    waveBars.forEach((bar, index) => {
+      const wobble = 0.75 + 0.25 * Math.sin(now / 90 + index * 1.3);
+      const height = WAVE_MIN_PX + waveState.shown * (WAVE_MAX_PX - WAVE_MIN_PX) * WAVE_SHAPE[index] * wobble;
+      bar.style.height = height.toFixed(1) + "px";
+    });
   }
 
   function renderMood() {
@@ -186,7 +205,7 @@
   }
 
   function wantsNotchOpen() {
-    return micBusy || document.activeElement === $("input") || (state && state.approvals.length > 0) || document.body.matches(":hover");
+    return document.activeElement === $("input") || (state && state.approvals.length > 0) || document.body.matches(":hover");
   }
 
   function renderState(next) {
@@ -374,8 +393,14 @@
       send({ type: "chat", text: heard });
     };
     if (window.petHost && window.petHost.onMic) {
+      const root = document.documentElement;
+      $("wave").addEventListener("click", hostListen);
+      window.petHost.onLevel((level) => { waveState.target = Math.max(waveState.target, Math.min(1, Math.max(0, level))); });
       window.petHost.onMic((state) => {
         window.petMic(state === "on");
+        root.classList.toggle("recording", state !== "off");
+        root.classList.toggle("transcribing", state === "transcribing");
+        if (state === "off") waveBars.forEach((bar) => { bar.style.height = ""; });
         if (state === "transcribing") { micBusy = true; mic.textContent = "⏳"; }
       });
       window.petHost.onVoice((text) => window.petVoice(text));

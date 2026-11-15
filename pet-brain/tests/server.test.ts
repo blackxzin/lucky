@@ -33,7 +33,10 @@ describe("MCP server", () => {
       "maestri_raw",
       "memory_log",
       "opencode_run",
+      "pc_open_app",
+      "pc_open_url",
       "pc_run",
+      "pc_search",
       "reminder_add",
       "reminder_list",
       "vault_list",
@@ -41,6 +44,7 @@ describe("MCP server", () => {
       "vault_search",
       "vault_stats",
       "vault_write",
+      "whatsapp_draft",
     ]);
   });
 
