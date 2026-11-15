@@ -5,7 +5,9 @@ import type { AuditLog } from "../pc/audit.js";
 import type { Reminder, ReminderStore } from "../reminders/store.js";
 import { vaultStats, type VaultStats } from "../vault/read.js";
 import type { Agent } from "./agent.js";
+import { appendInbox } from "../vault/journal.js";
 import type { Alerts } from "./alerts.js";
+import { describeWeather, type WeatherInfo } from "./weather.js";
 
 const MAX_HISTORY = 50;
 /** Um rodando mais os que esperam. Acima disso o hub recusa em vez de acumular. */
@@ -13,6 +15,10 @@ const MAX_PENDING_JOBS = 5;
 const NEW_SESSION_COMMAND = "/novo";
 const CONSOLIDATE_COMMAND = "/consolidar";
 const STATUS_COMMAND = "/status";
+const CAPTURE_COMMAND = /^\/anota(?:\s+([\s\S]+))?$/i;
+const MORNING_FROM_HOUR = 5;
+const NOON_HOUR = 12;
+const EVENING_HOUR = 18;
 const STATUS_ACTIONS = 8;
 const CONSOLIDATE_PROMPT =
   "Consolide a memória: liste as notas de journal/ com vault_list, leia as mais recentes e transforme o que for " +
@@ -62,6 +68,10 @@ export interface HubCore {
   addHabit(name: string, everyMinutes: number): Promise<void>;
   doneHabit(id: string): Promise<void>;
   removeHabit(id: string): Promise<void>;
+  /** Resumo do dia (lembretes, hábitos, tempo), montado sem o modelo. */
+  briefing(): Promise<string>;
+  /** Joga uma ideia no inbox do cofre e avisa no chat. */
+  capture(text: string): Promise<void>;
   subscribe(listener: (event: HubEvent) => void): () => void;
 }
 
@@ -73,6 +83,8 @@ export interface HubCoreOptions {
   habits: HabitStore;
   /** Avisos do próprio PC (disco, bateria, memória). Sem isso o pet só fala quando falam com ele. */
   alerts?: Alerts;
+  /** Tempo do lugar configurado; entra no resumo do dia. */
+  weather?: () => Promise<WeatherInfo | undefined>;
   vaultRoot: string;
   petName: string;
   now?: () => Date;
@@ -86,7 +98,7 @@ function toPending(approval: Approval): PendingApproval {
 const MS_PER_MINUTE = 60_000;
 
 export function createHubCore(options: HubCoreOptions): HubCore {
-  const { agent, approvals, audit, reminders, habits, alerts, vaultRoot, petName, now = () => new Date() } = options;
+  const { agent, approvals, audit, reminders, habits, alerts, weather, vaultRoot, petName, now = () => new Date() } = options;
 
   let listeners: ReadonlyArray<(event: HubEvent) => void> = [];
   let history: readonly ChatMessage[] = [];
@@ -178,7 +190,50 @@ export function createHubCore(options: HubCoreOptions): HubCore {
     ].join("\n");
   };
 
+  const captureText = async (text: string): Promise<void> => {
+    try {
+      await appendInbox({ vaultRoot, text, now });
+      say("system", "📝 Anotado no inbox.");
+    } catch (error: unknown) {
+      say("system", describe(error));
+    }
+  };
+
+  const untilText = (dueAt: string): string => {
+    const minutes = Math.max(0, Math.round((new Date(dueAt).getTime() - now().getTime()) / MS_PER_MINUTE));
+    return minutes < 60 ? `${String(minutes)} min` : `${String(Math.floor(minutes / 60))}h${pad(minutes % 60)}`;
+  };
+
+  /** Resumo do dia só com o que o hub já sabe: não chama o modelo (rápido e de graça). */
+  const briefingText = async (): Promise<string> => {
+    const hour = now().getHours();
+    const greeting = hour < MORNING_FROM_HOUR ? "Ainda de pé?" : hour < NOON_HOUR ? "Bom dia!" : hour < EVENING_HOUR ? "Boa tarde!" : "Boa noite!";
+    const [upcoming, routine, forecast] = await Promise.all([
+      reminders.list(),
+      habits.list(),
+      (weather?.() ?? Promise.resolve(undefined)).catch(() => undefined),
+    ]);
+    const lines = [`${greeting} Resumo rápido:`];
+    if (forecast !== undefined) lines.push(describeWeather(forecast));
+    const [next] = upcoming;
+    lines.push(
+      next === undefined
+        ? "⏰ Nenhum lembrete pendente."
+        : `⏰ ${String(upcoming.length)} lembrete(s). O próximo: "${next.text}" em ${untilText(next.dueAt)}.`,
+    );
+    lines.push(
+      routine.length === 0
+        ? "🌱 Nenhum hábito criado ainda."
+        : `🌱 Hábitos hoje: ${routine.map((habit) => `${habit.name} (${String(habit.doneToday)}x)`).join(", ")}.`,
+    );
+    return lines.join("\n");
+  };
+
   return {
+    briefing: briefingText,
+
+    capture: captureText,
+
     tick: async () => {
       for (const reminder of await reminders.takeDue()) say("pet", `⏰ Lembrete: ${reminder.text}`);
       for (const habit of await habits.takeDue()) say("pet", `🌱 Hora do hábito: ${habit.name} (hoje: ${String(habit.doneToday)}x)`);
@@ -228,6 +283,12 @@ export function createHubCore(options: HubCoreOptions): HubCore {
       if (trimmed === NEW_SESSION_COMMAND) {
         sessionId = undefined;
         say("system", "Conversa nova. A memória do cofre continua.");
+        return;
+      }
+      const capture = CAPTURE_COMMAND.exec(trimmed);
+      if (capture !== null) {
+        if (capture[1] === undefined) say("system", "Escreva a ideia depois: /anota comprar café");
+        else await captureText(capture[1]);
         return;
       }
       if (trimmed === STATUS_COMMAND) {

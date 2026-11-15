@@ -34,6 +34,8 @@ function fakeCore(): FakeCore {
     refreshes: 0,
     reminderCalls: [],
     habitCalls: [],
+    briefing: async () => "Bom dia! Resumo rápido:",
+    capture: async (text) => void core.habitCalls.push(`capture:${text}`),
     listHabits: async () => [{ id: "b".repeat(16), name: "beber água", everyMinutes: 60, nextAt: "2026-11-10T13:00:00.000Z", doneToday: 2 }],
     addHabit: async (name, everyMinutes) => void core.habitCalls.push(`add:${name}:${everyMinutes}`),
     doneHabit: async (id) => void core.habitCalls.push(`done:${id}`),
@@ -507,6 +509,21 @@ describe("hub devices", () => {
     expect((await phone.next()).type).toBe("pong");
   });
 
+  test("relays the play and goodnight signals", async () => {
+    await start();
+    const pc = await authedAs("pc");
+    await pc.next();
+    const phone = await authedAs("phone");
+    await phone.next();
+    await pc.next();
+
+    pc.socket.send(JSON.stringify({ type: "signal", kind: "play" }));
+    pc.socket.send(JSON.stringify({ type: "signal", kind: "goodnight" }));
+
+    expect(await phone.next()).toEqual({ type: "signal", kind: "play", from: "pc" });
+    expect(await phone.next()).toEqual({ type: "signal", kind: "goodnight", from: "pc" });
+  });
+
   test("relays a scare to the other device", async () => {
     await start();
     const pc = await authedAs("pc");
@@ -596,6 +613,56 @@ describe("hub devices", () => {
       loop: "none",
     });
     expect(calls).toEqual(["next"]);
+  });
+
+  test("jumps in the song only with a whole number of seconds", async () => {
+    const seeks: number[] = [];
+    await start({ mediaSeek: async (seconds) => (seeks.push(seconds), { available: false }) });
+    const client = await authedAs("pc");
+    await client.next();
+
+    client.socket.send(JSON.stringify({ type: "media_seek", seconds: 42 }));
+    expect(await client.next()).toEqual({ type: "media", available: false });
+    client.socket.send(JSON.stringify({ type: "media_seek", seconds: -1 }));
+    expect((await client.next()).type).toBe("error");
+    client.socket.send(JSON.stringify({ type: "media_seek", seconds: 1.5 }));
+    expect((await client.next()).type).toBe("error");
+    expect(seeks).toEqual([42]);
+  });
+
+  test("serves lyrics, system sample, weather and briefing, and degrades when a reader is missing", async () => {
+    await start({
+      lyrics: async () => ({ synced: [{ t: 1, text: "oi" }], plain: "oi" }),
+      perf: async () => ({ cpu: 0.2, memory: 0.5, memoryTotalGb: 16, disk: 0.4, tempC: 50, battery: undefined, uptimeSeconds: 10 }),
+      weather: async () => ({ place: "X", tempC: 20, feelsC: 20, label: "nublado", emoji: "☁️", rainChance: 5, maxC: 22, minC: 18 }),
+    });
+    const client = await authedAs("pc");
+    await client.next();
+
+    client.socket.send(JSON.stringify({ type: "lyrics", title: "T", artist: "A", duration: 100 }));
+    expect(await client.next()).toEqual({ type: "lyrics", key: "T\u0000A", synced: [{ t: 1, text: "oi" }], plain: "oi" });
+    client.socket.send(JSON.stringify({ type: "perf" }));
+    expect(await client.next()).toMatchObject({ type: "perf", sample: { cpu: 0.2, tempC: 50 } });
+    client.socket.send(JSON.stringify({ type: "weather" }));
+    expect(await client.next()).toMatchObject({ type: "weather", configured: true, info: { place: "X", tempC: 20 } });
+    client.socket.send(JSON.stringify({ type: "briefing" }));
+    expect(await client.next()).toEqual({ type: "briefing", text: "Bom dia! Resumo rápido:" });
+    client.socket.send(JSON.stringify({ type: "capture", text: "ideia" }));
+    client.socket.send(JSON.stringify({ type: "lyrics", title: "", artist: "A", duration: 1 }));
+    expect((await client.next()).type).toBe("error");
+  });
+
+  test("says weather is not configured and perf is null when the hub has no readers", async () => {
+    await start();
+    const client = await authedAs("pc");
+    await client.next();
+
+    client.socket.send(JSON.stringify({ type: "weather" }));
+    expect(await client.next()).toEqual({ type: "weather", info: null, configured: false });
+    client.socket.send(JSON.stringify({ type: "perf" }));
+    expect(await client.next()).toEqual({ type: "perf", sample: null });
+    client.socket.send(JSON.stringify({ type: "lyrics", title: "T", artist: "A", duration: 1 }));
+    expect(await client.next()).toMatchObject({ type: "lyrics", synced: null, plain: null });
   });
 
   test("answers a cover request through the injected reader, and says null when it cannot", async () => {

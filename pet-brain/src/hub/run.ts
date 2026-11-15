@@ -4,6 +4,8 @@ import { join } from "node:path";
 import type { Config } from "../config.js";
 import { createApprovalStore } from "../pc/approvals.js";
 import { createAuditLog } from "../pc/audit.js";
+import { createClipboardStore } from "../clipboard/store.js";
+import { startClipboardWatch } from "../clipboard/watch.js";
 import { createHabitStore } from "../habits/store.js";
 import { createReminderStore } from "../reminders/store.js";
 import { spawnRunner } from "../proc/run.js";
@@ -15,8 +17,11 @@ import { createAlerts } from "./alerts.js";
 import { createFallbackAgent } from "./fallback-agent.js";
 import { createHubCore } from "./core.js";
 import { buildMcpConfig } from "./mcp-config.js";
+import { createLyrics } from "./lyrics.js";
 import { createMediaArt } from "./media-art.js";
 import { createMedia } from "./media.js";
+import { createPerf } from "./perf.js";
+import { createWeather } from "./weather.js";
 import { buildOpenCodeConfig, createOpenCodeAgent } from "./opencode-agent.js";
 import { buildPersona } from "./persona.js";
 import { createHubServer } from "./server.js";
@@ -67,6 +72,8 @@ export async function startHub(config: Config, runtime: HubRuntime): Promise<str
   const agent = createFallbackAgent(claude, opencode);
   const reminders = createReminderStore({ dir: join(config.stateDir, "reminders") });
   const habits = createHabitStore({ dir: join(config.stateDir, "habits") });
+  const weather = createWeather({ defaultPlace: config.weatherPlace });
+  const media = createMedia({ run });
   const core = createHubCore({
     agent,
     approvals,
@@ -74,6 +81,7 @@ export async function startHub(config: Config, runtime: HubRuntime): Promise<str
     reminders,
     habits,
     alerts: createAlerts(createSystemSources(homedir())),
+    weather: () => weather(),
     vaultRoot: config.vaultRoot,
     petName: config.petName,
   });
@@ -83,7 +91,11 @@ export async function startHub(config: Config, runtime: HubRuntime): Promise<str
     uiDir: runtime.uiDir,
     host: config.hubHost,
     port: config.hubPort,
-    media: createMedia({ run }),
+    media,
+    mediaSeek: media.seek,
+    lyrics: createLyrics(),
+    perf: createPerf(homedir()),
+    weather,
     mediaArt: createMediaArt([tmpdir(), process.env.XDG_RUNTIME_DIR ?? "", join(homedir(), ".cache")].filter((dir) => dir !== "")),
   });
   /** Uma execução por rótulo: se a anterior ainda não acabou, esta é pulada (o resumo diário não escreve duas vezes). */
@@ -101,6 +113,13 @@ export async function startHub(config: Config, runtime: HubRuntime): Promise<str
   ];
   timers.forEach((timer) => timer.unref());
   background(() => maybeWriteDigest({ audit, vaultRoot: config.vaultRoot }), "falha no resumo diário");
+
+  if (config.clipboardEnabled) {
+    startClipboardWatch({
+      store: createClipboardStore({ path: join(config.stateDir, "clipboard.json") }),
+      logError: (message, error) => process.stderr.write(`[pet-hub] ${message}: ${error instanceof Error ? error.message : String(error)}\n`),
+    });
+  }
 
   const port = await server.listen();
   process.stderr.write(`[pet-hub] token em ${tokenPath(config.configDir)}\n`);

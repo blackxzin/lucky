@@ -21,6 +21,10 @@ export interface Config {
   allowAnyHost: boolean;
   petName: string;
   homeDir: string;
+  /** Lugar do tempo (ex.: "Fortaleza"). Sem ele o pet não adivinha onde o dono mora. */
+  weatherPlace: string | undefined;
+  /** Histórico do que o dono copia: desligado por padrão (PET_CLIPBOARD=1 liga). */
+  clipboardEnabled: boolean;
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -53,6 +57,17 @@ function petName(env: Env): string {
   return name;
 }
 
+const MAX_PLACE_CHARS = 60;
+
+function weatherPlace(env: Env): string | undefined {
+  const place = nonEmpty(env.PET_WEATHER_PLACE)?.trim();
+  if (place === undefined) return undefined;
+  if (place.length > MAX_PLACE_CHARS || /[\n\r]/.test(place)) {
+    throw new Error(`PET_WEATHER_PLACE precisa ter até ${MAX_PLACE_CHARS} caracteres, em uma linha.`);
+  }
+  return place;
+}
+
 const MODEL_PATTERN = /^[a-z0-9][\w.-]*\/[\w.:/-]+$/i;
 const DEFAULT_OPENCODE_MODEL = "opencode/big-pickle";
 
@@ -76,5 +91,7 @@ export function loadConfig(env: Env, homeDir: string): Config {
     allowAnyHost: env.PET_HUB_ALLOW_ANY_HOST === "1",
     petName: petName(env),
     homeDir,
+    weatherPlace: weatherPlace(env),
+    clipboardEnabled: env.PET_CLIPBOARD === "1",
   };
 }

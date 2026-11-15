@@ -49,6 +49,52 @@ describe("pc_media", () => {
   });
 });
 
+describe("weather_lookup", () => {
+  const forecast = {
+    current: { temperature_2m: 28, apparent_temperature: 30, weather_code: 0 },
+    daily: { precipitation_probability_max: [10], temperature_2m_max: [31], temperature_2m_min: [24] },
+  };
+  const weatherFetch = (urls: string[]): typeof fetch =>
+    (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      urls.push(url);
+      return url.includes("geocoding") ? json({ results: [{ name: "Recife", latitude: -8, longitude: -34 }] }) : json(forecast);
+    }) as typeof fetch;
+
+  test("describes the weather for the asked place", async () => {
+    const { createWeather } = await import("../src/hub/weather.js");
+    const urls: string[] = [];
+    const client = await connect(sandbox.deps({ weather: createWeather({ fetch: weatherFetch(urls) }) }));
+
+    const result = await call(client, "weather_lookup", { place: "Recife" });
+
+    expect(result.isError).toBe(false);
+    expect(result.text).toContain("Recife: 28°C");
+    expect(urls[0]).toContain("name=Recife");
+  });
+
+  test("explains when no default place is configured", async () => {
+    const { createWeather } = await import("../src/hub/weather.js");
+    const client = await connect(sandbox.deps({ weather: createWeather({ fetch: weatherFetch([]) }) }));
+
+    const result = await call(client, "weather_lookup", {});
+
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("PET_WEATHER_PLACE");
+  });
+
+  test("never sends a secret-looking place to the network", async () => {
+    const { createWeather } = await import("../src/hub/weather.js");
+    const urls: string[] = [];
+    const client = await connect(sandbox.deps({ weather: createWeather({ fetch: weatherFetch(urls) }) }));
+
+    const result = await call(client, "weather_lookup", { place: "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789" });
+
+    expect(result.isError).toBe(true);
+    expect(urls).toEqual([]);
+  });
+});
+
 describe("wiki_lookup", () => {
   const wikiFetch = (urls: string[]): typeof fetch =>
     (async (input: RequestInfo | URL) => {

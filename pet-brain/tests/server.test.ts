@@ -26,6 +26,8 @@ describe("MCP server", () => {
 
     expect(tools.map((t) => t.name).sort()).toEqual([
       "approval_status",
+      "clipboard_clear",
+      "clipboard_search",
       "habit_add",
       "habit_list",
       "maestri_ask",
@@ -47,6 +49,7 @@ describe("MCP server", () => {
       "vault_search",
       "vault_stats",
       "vault_write",
+      "weather_lookup",
       "whatsapp_draft",
       "wiki_lookup",
     ]);
@@ -175,7 +178,17 @@ describe("loadConfig", () => {
       allowAnyHost: false,
       petName: "Bit",
       homeDir: "/home/u",
+      weatherPlace: undefined,
+      clipboardEnabled: false,
     });
+  });
+
+  test("reads the optional weather place and clipboard switch", () => {
+    const config = loadConfig({ PET_WEATHER_PLACE: " Fortaleza ", PET_CLIPBOARD: "1" }, "/home/u");
+
+    expect(config.weatherPlace).toBe("Fortaleza");
+    expect(config.clipboardEnabled).toBe(true);
+    expect(() => loadConfig({ PET_WEATHER_PLACE: "a\nb" }, "/home/u")).toThrow(/PET_WEATHER_PLACE/);
   });
 
   test("honours the environment", () => {

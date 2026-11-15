@@ -335,6 +335,76 @@ describe("hub core", () => {
     expect(said).toEqual(["🌱 Hora do hábito: beber água (hoje: 0x)"]);
   });
 
+  describe("briefing and quick capture", () => {
+    const quiet = (weather?: () => Promise<import("../src/hub/weather.js").WeatherInfo | undefined>) =>
+      createHubCore({
+        agent: { send: async () => ({ text: "x", sessionId: undefined }) },
+        approvals,
+        audit: { record: async () => undefined, recent: async () => [], between: async () => [] },
+        reminders,
+        habits: createHabitStore({ dir: join(dir, "habits-briefing") }),
+        weather,
+        vaultRoot,
+        petName: "Bit",
+        now: () => clock,
+      });
+
+    test("briefing lists reminders, habits and the weather without calling the model", async () => {
+      clock = new Date(2026, 10, 10, 8, 0, 0);
+      await reminders.add({ text: "dentista", dueAt: new Date(2026, 10, 10, 9, 30, 0) });
+      const habits = createHabitStore({ dir: join(dir, "habits-briefing"), now: () => clock });
+      await habits.add({ name: "beber água", everyMinutes: 60 });
+      const hub = quiet(async () => ({ place: "Fortaleza", tempC: 30, feelsC: 33, label: "céu limpo", emoji: "☀️", rainChance: 10, maxC: 32, minC: 25 }));
+
+      const text = await hub.briefing();
+
+      expect(text).toContain("Bom dia!");
+      expect(text).toContain("Fortaleza: 30°C");
+      expect(text).toContain('"dentista" em 1h30');
+      expect(text).toContain("beber água (0x)");
+      expect(prompts).toEqual([]);
+    });
+
+    test("briefing still works with no reminders, no habits and a failing weather service", async () => {
+      clock = new Date(2026, 10, 10, 20, 0, 0);
+
+      const text = await quiet(async () => { throw new Error("offline"); }).briefing();
+
+      expect(text).toContain("Boa noite!");
+      expect(text).toContain("Nenhum lembrete pendente");
+      expect(text).toContain("Nenhum hábito criado");
+    });
+
+    test("/anota writes to the inbox note without asking the model, and refuses secrets", async () => {
+      const hub = quiet();
+      hub.subscribe((event) => events.push(event));
+
+      await hub.chat("/anota comprar café");
+      await hub.chat("/anota sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789");
+      await hub.chat("/anota");
+
+      const inbox = await readFile(join(vaultRoot, "inbox.md"), "utf8");
+      expect(inbox).toContain("comprar café");
+      expect(inbox).not.toContain("sk-ant");
+      expect(texts()).toEqual([
+        "system: 📝 Anotado no inbox.",
+        "system: Isso parece um segredo (senha ou chave). Não anotei.",
+        "system: Escreva a ideia depois: /anota comprar café",
+      ]);
+      expect(prompts).toEqual([]);
+    });
+
+    test("capture() from the UI appends one line per idea", async () => {
+      const hub = quiet();
+
+      await hub.capture("ideia um");
+      await hub.capture("ideia dois");
+
+      const lines = (await readFile(join(vaultRoot, "inbox.md"), "utf8")).split("\n").filter((line) => line.startsWith("- "));
+      expect(lines).toHaveLength(2);
+    });
+  });
+
   test("tick delivers a due reminder to the chat once", async () => {
     const hub = core();
     await reminders.add({ text: "tomar água", dueAt: new Date(clock.getTime() + 60_000) });

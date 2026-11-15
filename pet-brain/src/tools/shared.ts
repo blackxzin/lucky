@@ -3,6 +3,8 @@ import { UserFacingError } from "../errors.js";
 import type { MaestriClient } from "../maestri/client.js";
 import type { ApprovalStore } from "../pc/approvals.js";
 import type { AuditLog } from "../pc/audit.js";
+import type { ClipboardStore } from "../clipboard/store.js";
+import type { WeatherReader } from "../hub/weather.js";
 import type { HabitStore } from "../habits/store.js";
 import type { ProcessRunner } from "../proc/run.js";
 import type { ReminderStore } from "../reminders/store.js";
@@ -16,6 +18,9 @@ export interface ServerDeps {
   audit: AuditLog;
   reminders: ReminderStore;
   habits: HabitStore;
+  clipboard: ClipboardStore;
+  /** Tempo (Open-Meteo). Sem ele a ferramenta de clima avisa que não está configurada. */
+  weather?: WeatherReader;
   opencodeBin: string;
   /** Só para testes: troca o fetch usado pelas ferramentas de consulta. */
   fetch?: typeof fetch;

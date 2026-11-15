@@ -7,10 +7,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { runApprovalCli } from "./cli/approvals.js";
 import { loadConfig, type Config } from "./config.js";
 import { startHub } from "./hub/run.js";
+import { appendInbox } from "./vault/journal.js";
 import { createMaestriClient } from "./maestri/client.js";
 import { createApprovalStore } from "./pc/approvals.js";
 import { createAuditLog } from "./pc/audit.js";
+import { createClipboardStore } from "./clipboard/store.js";
 import { createHabitStore } from "./habits/store.js";
+import { createWeather } from "./hub/weather.js";
 import { createReminderStore } from "./reminders/store.js";
 import { spawnRunner } from "./proc/run.js";
 import { createServer } from "./server.js";
@@ -34,6 +37,8 @@ async function serveMcp(config: Config): Promise<void> {
     opencodeBin: config.opencodeBin,
     reminders: createReminderStore({ dir: join(config.stateDir, "reminders") }),
     habits: createHabitStore({ dir: join(config.stateDir, "habits") }),
+    clipboard: createClipboardStore({ path: join(config.stateDir, "clipboard.json") }),
+    weather: createWeather({ defaultPlace: config.weatherPlace }),
     ...stores(config),
   });
   await server.connect(new StdioServerTransport());
@@ -44,6 +49,18 @@ async function serveMcp(config: Config): Promise<void> {
 async function serveHub(config: Config): Promise<void> {
   const url = await startHub(config, { entry: ENTRY, uiDir: UI_DIR });
   process.stderr.write(`[pet-hub] pronto em ${url}\n`);
+}
+
+/** `pet-brain capture "ideia"`: joga a ideia no inbox do cofre, sem hub nem modelo (serve para atalho de teclado). */
+async function captureCli(config: Config, words: string[]): Promise<void> {
+  const text = words.join(" ").trim();
+  if (text === "") {
+    process.stderr.write('Uso: pet-brain capture "sua ideia"\n');
+    process.exitCode = 2;
+    return;
+  }
+  await appendInbox({ vaultRoot: config.vaultRoot, text });
+  process.stdout.write("Anotado no inbox.\n");
 }
 
 async function approvalCli(config: Config, args: string[]): Promise<number> {
@@ -67,6 +84,7 @@ async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   if (command === undefined) return serveMcp(config);
   if (command === "hub") return serveHub(config);
+  if (command === "capture") return captureCli(config, rest);
   process.exitCode = await approvalCli(config, [command, ...rest]);
 }
 

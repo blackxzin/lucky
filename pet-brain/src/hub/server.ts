@@ -8,7 +8,10 @@ import { UserFacingError } from "../errors.js";
 import type { HubCore, HubState } from "./core.js";
 import { createLockout } from "./lockout.js";
 import type { MediaArtReader } from "./media-art.js";
-import type { MediaController } from "./media.js";
+import type { LyricsReader } from "./lyrics.js";
+import type { MediaController, MediaSeek } from "./media.js";
+import type { PerfReader } from "./perf.js";
+import type { WeatherReader } from "./weather.js";
 import { parseClientMessage } from "./protocol.js";
 import { tokenMatches } from "./token.js";
 
@@ -53,6 +56,10 @@ export interface HubServerOptions {
   media?: MediaController;
   /** Lê a capa do álbum que está em disco (file:) e devolve como data URL. Sem ele, a UI só mostra capas https. */
   mediaArt?: MediaArtReader;
+  mediaSeek?: MediaSeek;
+  lyrics?: LyricsReader;
+  perf?: PerfReader;
+  weather?: WeatherReader;
   now?: () => number;
 }
 
@@ -311,6 +318,59 @@ export function createHubServer(options: HubServerOptions): HubServer {
         if (error instanceof UserFacingError) send(socket, { type: "error", text: error.message });
         else logError("falha ao mexer em hábito", error);
       });
+      return;
+    }
+    if (message.type === "media_seek") {
+      const seek = options.mediaSeek;
+      if (seek === undefined) return void send(socket, { type: "error", text: "Música indisponível neste aparelho." });
+      seek(message.seconds).then(
+        (status) => send(socket, { type: "media", ...status }),
+        (error: unknown) => logError("falha ao pular na música", error),
+      );
+      return;
+    }
+    if (message.type === "lyrics") {
+      const key = `${message.title}\u0000${message.artist}`;
+      const reader = options.lyrics;
+      const reply = (synced: unknown, plain: unknown): void => send(socket, { type: "lyrics", key, synced, plain });
+      if (reader === undefined) reply(null, null);
+      else reader(message).then((lyrics) => reply(lyrics.synced, lyrics.plain), () => reply(null, null));
+      return;
+    }
+    if (message.type === "perf") {
+      const reader = options.perf;
+      if (reader === undefined) return void send(socket, { type: "perf", sample: null });
+      reader().then(
+        (sample) => send(socket, { type: "perf", sample }),
+        (error: unknown) => {
+          logError("falha ao ler o desempenho", error);
+          send(socket, { type: "perf", sample: null });
+        },
+      );
+      return;
+    }
+    if (message.type === "weather") {
+      const reader = options.weather;
+      const reply = (info: unknown, configured: boolean): void => send(socket, { type: "weather", info, configured });
+      if (reader === undefined) return void reply(null, false);
+      reader().then(
+        (info) => reply(info ?? null, true),
+        (error: unknown) => {
+          logError("falha ao buscar o tempo", error);
+          reply(null, true);
+        },
+      );
+      return;
+    }
+    if (message.type === "briefing") {
+      core.briefing().then(
+        (text) => send(socket, { type: "briefing", text }),
+        (error: unknown) => logError("falha ao montar o resumo do dia", error),
+      );
+      return;
+    }
+    if (message.type === "capture") {
+      core.capture(message.text).catch((error: unknown) => logError("falha ao anotar", error));
       return;
     }
     if (message.type === "media_art") {

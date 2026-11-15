@@ -6,6 +6,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { MaestriClient } from "../src/maestri/client.js";
 import { createApprovalStore, type ApprovalStore } from "../src/pc/approvals.js";
 import type { AuditEntry } from "../src/pc/audit.js";
+import { createClipboardStore } from "../src/clipboard/store.js";
 import { createHabitStore } from "../src/habits/store.js";
 import { createReminderStore } from "../src/reminders/store.js";
 import type { ProcessOptions, ProcessResult, ProcessRunner } from "../src/proc/run.js";
@@ -66,6 +67,7 @@ export async function createSandbox(): Promise<Sandbox> {
       audit: { record: async (entry) => void audited.push(entry), recent: async () => [], between: async () => [] },
       reminders: createReminderStore({ dir: join(home, "state", "reminders") }),
       habits: createHabitStore({ dir: join(home, "state", "habits") }),
+      clipboard: createClipboardStore({ path: join(home, "state", "clipboard.json") }),
       opencodeBin: "opencode",
       ...overrides,
     }),

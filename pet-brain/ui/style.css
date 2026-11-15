@@ -167,3 +167,27 @@ svg.pet { cursor:pointer; touch-action:manipulation; }
 .spark.say { font-size:12px; font-weight:600; color:var(--fg); background:var(--card-2); border:1px solid var(--line); border-radius:10px; padding:3px 9px; text-shadow:none; box-shadow:0 4px 14px rgba(0,0,0,.4); }
 @keyframes spark-up { 0% { opacity:0; transform:translate(-50%,4px) scale(.7); } 15% { opacity:1; } 100% { opacity:0; transform:translate(-50%,-26px) scale(1.05); } }
 @media (prefers-reduced-motion: reduce) { .spark { animation:none; opacity:1; } }
+
+/* Letra da música, aba Sistema (desempenho e tempo), botão de anotar. */
+.lyrics { flex:1 1 100%; display:flex; flex-direction:column; gap:4px; align-items:center; text-align:center; padding-top:4px; min-height:0; }
+.lyrics[hidden] { display:none; }
+.lyrics .line { color:var(--muted); font-size:13px; opacity:.6; transition:opacity .25s, color .25s, transform .25s; overflow-wrap:anywhere; }
+.lyrics .line.now { color:var(--fg); font-size:16px; font-weight:700; opacity:1; transform:scale(1.02); }
+.lyrics.plain { align-items:stretch; text-align:left; max-height:120px; overflow-y:auto; white-space:pre-wrap; font-size:13px; color:var(--muted); }
+.seek { cursor:pointer; }
+.seek:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:6px; }
+.capture { background:var(--card-2); color:var(--fg); border:1px solid var(--line); padding:9px 11px; }
+.card.weather { gap:6px; }
+.wx-main { display:flex; align-items:center; gap:14px; }
+.wx-emoji { font-size:40px; line-height:1; }
+.wx-text { display:flex; flex-direction:column; }
+.wx-text strong { font-size:26px; }
+.card.perf { gap:10px; }
+.meter { display:grid; grid-template-columns:64px 1fr 84px; align-items:center; gap:10px; }
+.meter[hidden] { display:none; }
+.m-label { color:var(--muted); font-size:12px; }
+.m-val { font-variant-numeric:tabular-nums; text-align:right; font-size:12px; }
+.m-bar { height:8px; border-radius:999px; background:#2a3144; overflow:hidden; }
+.m-bar i { display:block; height:100%; width:0; border-radius:999px; background:var(--ok); transition:width .4s ease, background .3s; }
+.m-bar i.warn { background:var(--warn); }
+.m-bar i.hot { background:var(--danger); }

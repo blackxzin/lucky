@@ -86,6 +86,18 @@ describe("media", () => {
     expect(actions).toEqual([["play-pause"], ["next"], ["previous"], ["volume", "0.05+"], ["volume", "0.05-"]]);
   });
 
+  test("seek runs playerctl position only for a whole number inside the limit", async () => {
+    const { run, calls } = runner(playing);
+    const media = createMedia({ run });
+
+    await media.seek(75);
+    await media.seek(-5);
+    await media.seek(1.5);
+    await media.seek(999_999_999);
+
+    expect(calls.filter((args) => args[0] === "position")).toEqual([["position", "75"]]);
+  });
+
   test("reports no player instead of failing", async () => {
     const { run } = runner(() => fail);
 

@@ -34,6 +34,7 @@
       <button type="button" class="tab" data-view="reminders">⏰ Lembretes</button>
       <button type="button" class="tab" data-view="habits">🌱 Hábitos</button>
       <button type="button" class="tab" data-view="media">🎵 Música</button>
+      <button type="button" class="tab" data-view="system">📊 Sistema</button>
       <button type="button" class="tab" data-view="peers">🔗 Aparelhos <span id="peer-count" class="badge" hidden></span></button>
     </nav>
   </aside>
@@ -45,6 +46,7 @@
       <form id="form" class="form" autocomplete="off">
         <input id="input" type="text" maxlength="8000" placeholder="Fala com o pet…" aria-label="Mensagem">
         <button id="mic" class="mic" type="button" aria-label="Microfone (ligar ou desligar)" hidden>🎤</button>
+        <button id="capture" type="button" class="capture" title="Anotar no inbox (sem perguntar ao pet)" aria-label="Anotar no inbox">📝</button>
         <button type="submit">Enviar</button>
       </form>
     </section>
@@ -79,7 +81,7 @@
             <strong id="media-title">Nada tocando</strong>
             <span id="media-artist" class="muted">–</span>
           </div>
-          <div class="seek" aria-hidden="true">
+          <div class="seek" id="media-seek" role="slider" aria-label="Posição da música" tabindex="0">
             <span id="media-pos" class="muted">0:00</span>
             <svg class="seek-bar" viewBox="0 0 200 16" preserveAspectRatio="none">
               <path id="seek-played" class="played" d="M0 8H0"/>
@@ -101,6 +103,28 @@
             <button type="button" class="round" data-media="volume-up" aria-label="Aumentar volume">🔊</button>
           </div>
         </div>
+        <div id="media-lyrics" class="lyrics" hidden></div>
+      </div>
+    </section>
+    <section id="view-system" class="view" hidden>
+      <div id="weather-card" class="card weather">
+        <div class="wx-main">
+          <span id="wx-emoji" class="wx-emoji" aria-hidden="true">🌤️</span>
+          <div class="wx-text">
+            <strong id="wx-temp">–</strong>
+            <span id="wx-label" class="muted">Buscando o tempo…</span>
+          </div>
+        </div>
+        <span id="wx-place" class="muted"></span>
+        <span id="wx-extra" class="muted"></span>
+      </div>
+      <div class="card perf">
+        <div class="meter" data-key="cpu"><span class="m-label">CPU</span><div class="m-bar"><i></i></div><span class="m-val">–</span></div>
+        <div class="meter" data-key="memory"><span class="m-label">Memória</span><div class="m-bar"><i></i></div><span class="m-val">–</span></div>
+        <div class="meter" data-key="disk"><span class="m-label">Disco</span><div class="m-bar"><i></i></div><span class="m-val">–</span></div>
+        <div class="meter" data-key="temp"><span class="m-label">Temp.</span><div class="m-bar"><i></i></div><span class="m-val">–</span></div>
+        <div class="meter" data-key="battery" hidden><span class="m-label">Bateria</span><div class="m-bar"><i></i></div><span class="m-val">–</span></div>
+        <span id="perf-uptime" class="muted"></span>
       </div>
     </section>
     <section id="view-peers" class="view" hidden>
@@ -111,6 +135,7 @@
           <button type="button" id="wave-hi">👋 Dar oi</button>
           <button type="button" id="poke">👉 Cutucar</button>
           <button type="button" id="scare">😱 Assustar</button>
+          <button type="button" id="play">🏓 Brincar</button>
         </div>
       </div>
     </section>

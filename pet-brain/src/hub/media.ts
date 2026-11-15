@@ -23,6 +23,8 @@ export type MediaStatus =
     };
 
 export type MediaController = (action: MediaAction) => Promise<MediaStatus>;
+/** Pula para um segundo da faixa e devolve o estado novo. */
+export type MediaSeek = (seconds: number) => Promise<MediaStatus>;
 
 const PLAYERCTL = "playerctl";
 const TIMEOUT_MS = 2000;
@@ -63,8 +65,10 @@ const safeArtUrl = (text: string | undefined): string => {
   return url.length <= MAX_ART_URL_CHARS && (url.startsWith("https://") || url.startsWith("file://")) ? url : "";
 };
 
+export const MAX_SEEK_SECONDS = 24 * 60 * 60;
+
 /** Controla o player de música do PC (MPRIS) pelo playerctl. Sem player ou sem playerctl, responde "indisponível". */
-export function createMedia(deps: { run: ProcessRunner }): MediaController {
+export function createMedia(deps: { run: ProcessRunner }): MediaController & { seek: MediaSeek } {
   const playerctl = (args: readonly string[]) => deps.run(PLAYERCTL, args, { timeoutMs: TIMEOUT_MS });
 
   const readLoop = async (): Promise<LoopMode> => parseLoop((await playerctl(["loop"])).stdout);
@@ -89,14 +93,28 @@ export function createMedia(deps: { run: ProcessRunner }): MediaController {
     };
   };
 
-  return async (action) => {
+  const guard = async (work: () => Promise<MediaStatus>): Promise<MediaStatus> => {
     try {
-      if (action === "loop") await playerctl(["loop", NEXT_LOOP[await readLoop()]]);
-      else if (action !== "status") await playerctl(ACTION_ARGS[action]);
-      return await readStatus();
+      return await work();
     } catch (error) {
       if (error instanceof ProcError) return { available: false };
       throw error;
     }
   };
+
+  const controller: MediaController = (action) =>
+    guard(async () => {
+      if (action === "loop") await playerctl(["loop", NEXT_LOOP[await readLoop()]]);
+      else if (action !== "status") await playerctl(ACTION_ARGS[action]);
+      return readStatus();
+    });
+
+  /** O número vira argumento só depois de ser inteiro dentro do limite: nada vindo do cliente entra no comando como texto. */
+  const seek: MediaSeek = (target) =>
+    guard(async () => {
+      if (Number.isInteger(target) && target >= 0 && target <= MAX_SEEK_SECONDS) await playerctl(["position", String(target)]);
+      return readStatus();
+    });
+
+  return Object.assign(controller, { seek });
 }

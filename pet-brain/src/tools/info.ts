@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { createMedia, MEDIA_ACTIONS, type MediaStatus } from "../hub/media.js";
+import { describeWeather } from "../hub/weather.js";
 import { findSecret } from "../vault/secrets.js";
 import { gated } from "./gate.js";
 import { guarded, ToolError, truncate, type ServerDeps, type ToolRegistrar } from "./shared.js";
 
 const MAX_QUERY_CHARS = 150;
+const MAX_PLACE_CHARS = 60;
 const MAX_EXTRACT_CHARS = 900;
 const MAX_OTHER_TITLES = 3;
 const WIKI_TIMEOUT_MS = 8000;
@@ -81,6 +83,34 @@ export const registerInfoTools: ToolRegistrar = (server, deps) => {
           execute: async () => describeMedia(await createMedia({ run: deps.run })(action)),
         }),
       ),
+  );
+
+  server.registerTool(
+    "weather_lookup",
+    {
+      description:
+        "Diz o tempo agora e a previsão de hoje (temperatura, chuva). Sem lugar, usa o lugar que o dono configurou. Só o nome do lugar é enviado a um serviço público de clima.",
+      inputSchema: { place: z.string().min(1).max(MAX_PLACE_CHARS).optional() },
+    },
+    ({ place }) =>
+      guarded(() => {
+        const reader = deps.weather;
+        if (reader === undefined) throw new ToolError("O tempo não está disponível neste aparelho.");
+        if (place !== undefined && findSecret(place) !== undefined) throw new ToolError("Isso parece um segredo. Não vou mandar para fora.");
+        return gated(deps, {
+          tool: "weather_lookup",
+          action: place ?? "lugar padrão",
+          classification: auto("consulta pública, só o nome do lugar sai do PC"),
+          approvalId: undefined,
+          execute: async () => {
+            const info = await reader(place).catch(() => {
+              throw new ToolError("Não consegui buscar o tempo agora.");
+            });
+            if (info === undefined) throw new ToolError(place === undefined ? "O dono ainda não configurou um lugar para o tempo (PET_WEATHER_PLACE)." : `Não achei o lugar "${place}".`);
+            return describeWeather(info);
+          },
+        });
+      }),
   );
 
   server.registerTool(

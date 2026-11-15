@@ -27,6 +27,8 @@ npm test
 |---|---|---|
 | `PET_VAULT_DIR` | `~/pet-vault` | Cofre do pet. Caminho absoluto. Use uma pasta só dele, separada do seu cofre principal |
 | `MAESTRI_CLI` | `maestri` (PATH) | Caminho do binário do Maestri |
+| `PET_WEATHER_PLACE` | (desligado) | Cidade do tempo, ex.: `Fortaleza`. Só o nome da cidade vai ao Open-Meteo. Sem ela o pet não adivinha onde você mora |
+| `PET_CLIPBOARD` | (desligado) | `1` liga o histórico do que você copia (Wayland, `wl-paste`): 7 dias, até 200 itens, só no seu disco (0600). Segredos, textos grandes e cópias do gerenciador de senhas nunca entram |
 
 Para ver o cofre no Obsidian: "Abrir pasta como cofre" e escolha `~/pet-vault`.
 
@@ -86,6 +88,14 @@ Decisões e riscos residuais: `docs/decisions.md` (15–24).
 ## Reserva quando o Claude cai
 
 Se o `claude` falhar (não instalado, deslogado, assinatura vencida), o hub responde pelo OpenCode, só com as ferramentas do `pet-brain` e as mesmas travas. Modelo: `PET_OPENCODE_MODEL` (padrão `opencode/big-pickle`, formato `provider/modelo`). Binário: `OPENCODE_BIN`. O reserva não guarda histórico entre mensagens.
+
+## Música, sistema, tempo, anotações e cópias
+
+- **Música** (aba do painel): capa, progresso (clique na barra para pular), aleatório, repetir e letra. A letra vem do LRCLIB (público): só título, artista e duração saem do PC, para um host fixo. A capa em arquivo só é lida de pastas temporárias, do runtime e do cache, e só se os bytes forem mesmo de imagem.
+- **Sistema** (aba): CPU, memória, disco, temperatura, bateria e o tempo de hoje (Open-Meteo, precisa de `PET_WEATHER_PLACE`). O pet também responde ao tempo pela ferramenta `weather_lookup`.
+- **Resumo do dia**: uma vez por dia (primeira conexão depois das 5h) o pet conta lembretes, hábitos e tempo, sem chamar o modelo. O chip "resumo do dia" repete.
+- **Captura rápida**: `/anota ideia` no chat (ou o botão 📝) joga a ideia em `inbox.md` do cofre do pet. De fora do painel: `pet-brain capture "ideia"` ou `deploy/capture.sh`, que pergunta pelo rofi/fuzzel/wofi. Atalho no Hyprland: `bind = SUPER, N, exec, ~/lucky/pet-brain/deploy/capture.sh`. Segredos são recusados.
+- **Cópias**: com `PET_CLIPBOARD=1` no `hub.env`, o hub guarda o que você copia e o pet acha com `clipboard_search` ("aquele link de ontem"). `clipboard_clear` apaga tudo e pede sua aprovação.
 
 ## Lembretes, status e resumo diário
 

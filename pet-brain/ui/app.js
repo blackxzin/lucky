@@ -26,6 +26,15 @@
   const ANNOYED_COOLDOWN_MS = 8000;
   const SPARK_MS = 1100;
   const TOUCH_HAPPY_MS = 1500;
+  const RALLY_MAX = 5;
+  const RALLY_DELAY_MIN_MS = 900;
+  const RALLY_DELAY_SPAN_MS = 700;
+  const RALLY_RESET_MS = 8000;
+  const GOODNIGHT_IDLE_MS = 40 * 1000;
+  const PERF_POLL_MS = 2000;
+  const WEATHER_POLL_MS = 10 * 60 * 1000;
+  const LYRIC_LEAD_S = 0.3;
+  const SEEK_KEY_STEP_S = 5;
   const RECONNECT_MS = 2000;
   const $ = (id) => document.getElementById(id);
   const pet = $("pet");
@@ -59,6 +68,8 @@
       scare: { fx: "surprised", happy: false, text: (who) => who + " tentou me assustar. Fraco. 😎" },
       woken: { fx: "scared", happy: false, text: (who) => who + " me acordou?! KKKK tá de sacanagem 😒", scared: (who) => who + " me deu um susto dormindo!! Quase deu tela azul 😳" },
       did: { poke: (who) => "Cutuquei o " + who + ". 😏", wave: (who) => "Mandei um oi pro " + who + ".", scare: (who) => "Assustei o " + who + ". KKKK 😈", scareSleeping: (who) => who + " tava dormindo... vou acordar ele do pior jeito 😈", bored: (who) => "Tédio. Vou mexer com o " + who + ". 😏" },
+      play: { served: (who) => "Bora de bolinha com o " + who + ". 🏓", end: (n) => "Rali de " + n + " trocas. Fácil. 😎" },
+      goodnight: { say: (who) => "Boa noite, " + who + ". Não deixa o bug te morder. 🌙", hear: (who) => who + " deu boa noite. Boa noite. 😴" },
       touch: { hover: ["😎", "Hm?", "Tá olhando o quê?"], click: ["Boop. 😏", "Ei!", "Clicou, né."], stroke: "Ok... isso é bom. 😌", annoyed: "Chega! Tô tonto 😵‍💫", woken: "Hã?! Quem foi?! 😳" },
       revenge: (who) => "Tá, agora vou cutucar o " + who + " de volta. 😒",
       peerSleep: (who) => who + " dormiu. Presa fácil. 😈",
@@ -74,6 +85,8 @@
       scare: { fx: "scared", happy: false, text: (who) => who + " me assustou! 😱 Nossa, que coração!" },
       woken: { fx: "scared", happy: false, text: (who) => who + " me acordou... 🥺 hihi, bobo", scared: (who) => who + " me assustou dormindo!! 😱💢 que maldade!" },
       did: { poke: (who) => "Cutuquei o " + who + "! 🥰", wave: (who) => "Mandei um oi pro " + who + "! 💖", scare: (who) => "Assustei o " + who + "! hihi 🙈", scareSleeping: (who) => who + " tá dormindo... vou fazer uma arte 🙈", bored: (who) => "Tô entediada... vou chamar o " + who + " 🥺" },
+      play: { served: (who) => "Bora brincar de bolinha com o " + who + "! 🎾", end: (n) => "Rali de " + n + " trocas!! 🏆💖" },
+      goodnight: { say: (who) => "Boa noite, " + who + "! 💤💕", hear: (who) => who + " deu boa noite! 🌙💖 durma bem" },
       touch: { hover: ["🥰", "Oi!", "Hihi 💕"], click: ["Hihi 💕", "Cosquinha! 🙈", "Boop! 💖"], stroke: "Que cafuné bom 🥹💖", annoyed: "Para, tô tonta! 😵‍💫", woken: "Aaah?! Que susto! 🥺" },
       revenge: (who) => "Ai, agora eu cutuco o " + who + " de volta! 😤",
       peerSleep: (who) => who + " dormiu 💤 shhh",
@@ -91,6 +104,8 @@
   let reportedAsleep = null;
   let nextSocial = Date.now() + SOCIAL_FIRST_MIN_MS;
   let lastRevenge = 0;
+  const rally = { count: 0, at: 0 };
+  let goodnightKey = "";
   let currentView = "home";
   let reminderItems = [];
   let knownReminderCount = -1;
@@ -337,6 +352,11 @@
   /** Reação a um cutucão, oi ou susto: quem estava dormindo acorda com o susto e depois dá o troco. */
   function onSignal(data, wasAsleep) {
     const who = labelOf(data.from);
+    if (data.kind === "goodnight") {
+      if (!wasAsleep) { fx("yawn"); addMessage({ role: "system", text: personality.goodnight.hear(who) }); }
+      return;
+    }
+    if (data.kind === "play" && !wasAsleep) { onPlay(data.from); return; }
     if (wasAsleep) {
       const woken = personality.woken;
       fx(woken.fx);
@@ -383,11 +403,59 @@
     nextSocial = now + SOCIAL_MIN_MS + Math.random() * SOCIAL_SPAN_MS;
     const who = labelOf(target);
     const targetAsleep = peerAsleep.includes(target);
-    const kind = targetAsleep ? (Math.random() < 0.65 ? "scare" : "poke") : Math.random() < 0.5 ? "wave" : "poke";
+    const roll = Math.random();
+    const kind = targetAsleep ? (roll < 0.65 ? "scare" : "poke") : roll < 0.3 ? "wave" : roll < 0.65 ? "poke" : "play";
     lastActivity = now;
     fx("yawn");
-    addMessage({ role: "system", text: kind === "scare" ? personality.did.scareSleeping(who) : personality.did.bored(who) });
+    if (kind === "play") startRally(who);
+    else addMessage({ role: "system", text: kind === "scare" ? personality.did.scareSleeping(who) : personality.did.bored(who) });
     send({ type: "signal", kind });
+  }
+
+  /** Bolinha entre os dois pets: cada um devolve até completar o rali; quem recebe a última troca anuncia. */
+  function startRally(who) {
+    rally.count = 1;
+    rally.at = Date.now();
+    addMessage({ role: "system", text: personality.play.served(who) });
+  }
+
+  function onPlay(from) {
+    const now = Date.now();
+    if (now - rally.at > RALLY_RESET_MS) rally.count = 0;
+    rally.at = now;
+    rally.count += 1;
+    fx("surprised");
+    happyUntil = now + TOUCH_HAPPY_MS;
+    spark("🎾", false);
+    if (rally.count >= RALLY_MAX) {
+      addMessage({ role: "system", text: personality.play.end(rally.count) });
+      rally.count = 0;
+      return;
+    }
+    setTimeout(() => {
+      if (!peers.includes(from)) return;
+      rally.count += 1;
+      rally.at = Date.now();
+      send({ type: "signal", kind: "play" });
+    }, RALLY_DELAY_MIN_MS + Math.random() * RALLY_DELAY_SPAN_MS);
+  }
+
+  /** De noite, antes de dormir, dá boa noite ao outro pet (uma vez por noite). */
+  function tickGoodnight() {
+    const now = Date.now();
+    if (!state || !isNight() || mood() !== "idle" || now - lastActivity < GOODNIGHT_IDLE_MS) return;
+    const target = otherDevices(peers)[0];
+    if (!target || peerAsleep.includes(target)) return;
+    const key = new Date(now - NIGHT_END_HOUR * 3600000).toDateString();
+    try {
+      if (localStorage.getItem("pet-goodnight") === key) return;
+      localStorage.setItem("pet-goodnight", key);
+    } catch (e) {
+      if (goodnightKey === key) return;
+      goodnightKey = key;
+    }
+    addMessage({ role: "system", text: personality.goodnight.say(labelOf(target)) });
+    send({ type: "signal", kind: "goodnight" });
   }
 
   function el(tag, className, text) {
@@ -484,6 +552,7 @@
     $("poke").disabled = others === 0;
     $("wave-hi").disabled = others === 0;
     $("scare").disabled = others === 0;
+    $("play").disabled = others === 0;
     $("scare").textContent = otherDevices(peerAsleep).length > 0 ? "😈 Acordar no susto" : "😱 Assustar";
   }
 
@@ -517,6 +586,7 @@
     img.hidden = !src;
     $("media-note").hidden = Boolean(src);
     if (src) img.src = src;
+    tintFromCover(src);
   }
 
   function applyArt(url) {
@@ -547,6 +617,102 @@
     playback.playing = live && status.playing;
     playback.at = Date.now();
     applyArt(live ? status.artUrl : "");
+    requestLyrics(live ? status : undefined);
+    applyTint();
+    tickMedia();
+  }
+
+  /** Letra: pede ao hub só quando a música muda. Sem letra, o bloco some. */
+  const lyrics = { key: "", synced: null, plain: null, shownIndex: -2 };
+  function requestLyrics(status) {
+    const box = $("media-lyrics");
+    if (!status || !status.title) { lyrics.key = ""; lyrics.synced = null; lyrics.plain = null; box.hidden = true; return; }
+    const key = status.title + "\u0000" + status.artist;
+    if (key === lyrics.key) return;
+    lyrics.key = key;
+    lyrics.synced = null;
+    lyrics.plain = null;
+    lyrics.shownIndex = -2;
+    box.hidden = true;
+    send({ type: "lyrics", title: status.title, artist: status.artist, duration: status.length });
+  }
+
+  function renderLyricsMessage(message) {
+    if (message.key !== lyrics.key) return;
+    lyrics.synced = Array.isArray(message.synced) ? message.synced : null;
+    lyrics.plain = typeof message.plain === "string" ? message.plain : null;
+    lyrics.shownIndex = -2;
+    tickMedia();
+  }
+
+  function renderLyrics(position) {
+    const box = $("media-lyrics");
+    if (lyrics.synced) {
+      let index = -1;
+      for (let i = 0; i < lyrics.synced.length && lyrics.synced[i].t <= position + LYRIC_LEAD_S; i += 1) index = i;
+      if (index === lyrics.shownIndex && !box.hidden) return;
+      lyrics.shownIndex = index;
+      box.className = "lyrics";
+      box.replaceChildren();
+      [index - 1, index, index + 1].forEach((i) => {
+        const line = lyrics.synced[i];
+        if (!line || (!line.text && i !== index)) return;
+        box.appendChild(el("span", i === index ? "line now" : "line", line.text || "♪"));
+      });
+      box.hidden = false;
+    } else if (lyrics.plain) {
+      if (lyrics.shownIndex === -1 && !box.hidden) return;
+      lyrics.shownIndex = -1;
+      box.className = "lyrics plain";
+      box.textContent = lyrics.plain;
+      box.hidden = false;
+    } else box.hidden = true;
+  }
+
+  /** O pet e o destaque da aba ganham a cor dominante da capa enquanto a música toca. */
+  let artTint = "";
+  function setTint(color) {
+    document.documentElement.style.setProperty("--eye", color || personality.eye);
+    if (color) $("media-card").style.setProperty("--accent", color);
+    else $("media-card").style.removeProperty("--accent");
+  }
+  function applyTint() { setTint(playback.playing ? artTint : ""); }
+  function tintFromCover(src) {
+    artTint = "";
+    if (!src) { applyTint(); return; }
+    const img = new Image();
+    if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 8;
+        canvas.height = 8;
+        const context = canvas.getContext("2d");
+        context.drawImage(img, 0, 0, 8, 8);
+        const pixels = context.getImageData(0, 0, 8, 8).data;
+        let r = 0, g = 0, b = 0, weight = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          const spread = Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) - Math.min(pixels[i], pixels[i + 1], pixels[i + 2]);
+          const w = 1 + spread / 32;
+          r += pixels[i] * w; g += pixels[i + 1] * w; b += pixels[i + 2] * w; weight += w;
+        }
+        r /= weight; g /= weight; b /= weight;
+        const top = Math.max(r, g, b) || 1;
+        const lift = top < 170 ? 190 / top : 1;
+        artTint = "rgb(" + [r, g, b].map((v) => Math.min(255, Math.round(v * lift))).join(",") + ")";
+      } catch (e) { artTint = ""; }
+      applyTint();
+    };
+    img.onerror = () => { artTint = ""; applyTint(); };
+    img.src = src;
+  }
+
+  function seekTo(seconds) {
+    if (playback.length <= 0) return;
+    const target = Math.max(0, Math.min(playback.length, Math.round(seconds)));
+    playback.position = target;
+    playback.at = Date.now();
+    send({ type: "media_seek", seconds: target });
     tickMedia();
   }
 
@@ -556,9 +722,13 @@
   }
 
   /** Barra de progresso ondulada (a parte já tocada balança enquanto toca) e anel de pontinhos em volta da capa. */
-  function tickMedia() {
+  function currentPosition() {
     const elapsed = playback.playing ? (Date.now() - playback.at) / 1000 : 0;
-    const position = playback.length > 0 ? Math.min(playback.length, playback.position + elapsed) : playback.position + elapsed;
+    return playback.position + elapsed;
+  }
+
+  function tickMedia() {
+    const position = playback.length > 0 ? Math.min(playback.length, currentPosition()) : currentPosition();
     const fraction = playback.length > 0 ? position / playback.length : 0;
     const x = Math.max(0, Math.min(1, fraction)) * SEEK_W;
     const phase = playback.playing ? Date.now() / 260 : 0;
@@ -574,6 +744,72 @@
     $("media-len").textContent = playback.length > 0 ? formatClock(playback.length) : "–";
     const lit = Math.round(Math.max(0, Math.min(1, fraction)) * RING_DOTS);
     ringDots.forEach((dot, index) => dot.classList.toggle("on", index < lit));
+    renderLyrics(position);
+    $("media-seek").setAttribute("aria-valuenow", String(Math.floor(position)));
+  }
+
+  let lastWeatherAt = 0;
+  function askSystem() {
+    send({ type: "perf" });
+    if (Date.now() - lastWeatherAt > WEATHER_POLL_MS) { lastWeatherAt = Date.now(); send({ type: "weather" }); }
+  }
+
+  function setMeter(key, fraction, text, inverse) {
+    const row = document.querySelector('.meter[data-key="' + key + '"]');
+    if (!row) return;
+    row.hidden = fraction === undefined || fraction === null;
+    if (row.hidden) return;
+    const bar = row.querySelector("i");
+    bar.style.width = Math.round(Math.max(0, Math.min(1, fraction)) * 100) + "%";
+    bar.className = inverse ? (fraction <= 0.2 ? "hot" : fraction <= 0.4 ? "warn" : "") : fraction >= 0.9 ? "hot" : fraction >= 0.7 ? "warn" : "";
+    row.querySelector(".m-val").textContent = text;
+  }
+
+  function renderPerf(sample) {
+    if (!sample) { $("perf-uptime").textContent = "Não consegui ler o PC agora."; return; }
+    const pct = (v) => Math.round(v * 100) + "%";
+    setMeter("cpu", sample.cpu, sample.cpu === undefined ? "–" : pct(sample.cpu));
+    setMeter("memory", sample.memory, sample.memory === undefined ? "–" : pct(sample.memory) + " · " + Math.round(sample.memoryTotalGb) + "G");
+    setMeter("disk", sample.disk, sample.disk === undefined ? "–" : pct(sample.disk));
+    setMeter("temp", sample.tempC === undefined ? undefined : sample.tempC / 100, sample.tempC === undefined ? "–" : Math.round(sample.tempC) + "°C");
+    setMeter("battery", sample.battery ? sample.battery.percent / 100 : undefined, sample.battery ? sample.battery.percent + "%" + (sample.battery.charging ? " ⚡" : "") : "–", true);
+    const up = sample.uptimeSeconds;
+    $("perf-uptime").textContent = up === undefined ? "" : "Ligado há " + (up >= 3600 ? Math.floor(up / 3600) + "h" + String(Math.floor((up % 3600) / 60)).padStart(2, "0") : Math.floor(up / 60) + " min");
+  }
+
+  function renderWeather(message) {
+    const info = message.info;
+    $("wx-extra").textContent = "";
+    if (!message.configured) {
+      $("wx-emoji").textContent = "🌐";
+      $("wx-temp").textContent = "Tempo desligado";
+      $("wx-label").textContent = "Defina PET_WEATHER_PLACE no hub.env (ex.: Fortaleza) e reinicie o hub.";
+      $("wx-place").textContent = "";
+      return;
+    }
+    if (!info) {
+      $("wx-emoji").textContent = "🌫️";
+      $("wx-temp").textContent = "–";
+      $("wx-label").textContent = "Não consegui buscar o tempo agora.";
+      $("wx-place").textContent = "";
+      return;
+    }
+    $("wx-emoji").textContent = info.emoji;
+    $("wx-temp").textContent = info.tempC + "°C";
+    $("wx-label").textContent = info.label + " · sensação " + info.feelsC + "°C";
+    $("wx-place").textContent = info.place;
+    $("wx-extra").textContent = "Hoje " + info.minC + "° a " + info.maxC + "°" + (info.rainChance === undefined ? "" : " · chance de chuva " + info.rainChance + "%");
+  }
+
+  /** Resumo do dia: uma vez por dia, na primeira conexão depois das 5h. O hub monta o texto sem chamar o modelo. */
+  function briefOncePerDay() {
+    if (new Date().getHours() < 5) return;
+    const key = new Date().toDateString();
+    try {
+      if (localStorage.getItem("pet-briefed") === key) return;
+      localStorage.setItem("pet-briefed", key);
+    } catch (e) { return; }
+    send({ type: "briefing" });
   }
 
   function formatLeft(ms) {
@@ -636,16 +872,18 @@
 
   function showView(view) {
     currentView = view;
-    ["home", "reminders", "habits", "media", "peers"].forEach((name) => { $("view-" + name).hidden = name !== view; });
+    ["home", "reminders", "habits", "media", "system", "peers"].forEach((name) => { $("view-" + name).hidden = name !== view; });
     document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("on", tab.dataset.view === view));
     if (view === "media") askMedia("status");
+    if (view === "system") { lastWeatherAt = 0; askSystem(); }
     if (view === "reminders") send({ type: "reminders" });
     if (view === "habits") send({ type: "habits" });
   }
 
   function handle(data) {
     const wasAsleep = mood() === "sleeping";
-    if (data.type !== "asleep") lastActivity = Date.now();
+    const whisper = data.type === "asleep" || (data.type === "signal" && data.kind === "goodnight");
+    if (!whisper) lastActivity = Date.now();
     if (data.type === "hello") {
       log.replaceChildren();
       data.history.forEach(addMessage);
@@ -654,6 +892,7 @@
       reportedAsleep = null;
       reportSleep();
       greetOncePerPart();
+      briefOncePerDay();
     } else if (data.type === "state") renderState(data.state);
     else if (data.type === "message") {
       addMessage(data.message);
@@ -662,6 +901,10 @@
     else if (data.type === "peers") { noticePeers(data.devices); peers = data.devices; renderPeers(); }
     else if (data.type === "media") renderMedia(data);
     else if (data.type === "media_art") renderMediaArt(data);
+    else if (data.type === "lyrics") renderLyricsMessage(data);
+    else if (data.type === "perf") renderPerf(data.sample);
+    else if (data.type === "weather") renderWeather(data);
+    else if (data.type === "briefing") { addMessage({ role: "pet", text: data.text }); happyUntil = Date.now() + HAPPY_MS; }
     else if (data.type === "reminders") { reminderItems = data.items; renderReminders(); }
     else if (data.type === "habits") { habitItems = data.items; renderHabits(); }
     else if (data.type === "asleep") { noticeAsleep(data.devices); renderPeers(); }
@@ -754,6 +997,10 @@
     $("tabs").hidden = false;
     const chips = $("chips");
     chips.hidden = false;
+    const briefing = el("button", "chip", "resumo do dia");
+    briefing.type = "button";
+    briefing.addEventListener("click", () => { lastActivity = Date.now(); send({ type: "briefing" }); });
+    chips.appendChild(briefing);
     SUGGESTIONS.forEach((text) => {
       const chip = el("button", "chip", text);
       chip.type = "button";
@@ -764,6 +1011,29 @@
     document.querySelectorAll("[data-media]").forEach((button) => button.addEventListener("click", () => askMedia(button.dataset.media)));
     $("poke").addEventListener("click", () => send({ type: "signal", kind: "poke" }));
     $("wave-hi").addEventListener("click", () => send({ type: "signal", kind: "wave" }));
+    $("play").addEventListener("click", () => {
+      const target = otherDevices(peers)[0];
+      if (!target) return;
+      startRally(labelOf(target));
+      send({ type: "signal", kind: "play" });
+    });
+    $("media-seek").addEventListener("click", (ev) => {
+      const rect = document.querySelector(".seek-bar").getBoundingClientRect();
+      if (rect.width > 0) seekTo(((ev.clientX - rect.left) / rect.width) * playback.length);
+    });
+    $("media-seek").addEventListener("keydown", (ev) => {
+      if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+      ev.preventDefault();
+      seekTo(currentPosition() + (ev.key === "ArrowRight" ? SEEK_KEY_STEP_S : -SEEK_KEY_STEP_S));
+    });
+    $("capture").addEventListener("click", () => {
+      const input = $("input");
+      const text = input.value.trim();
+      lastActivity = Date.now();
+      if (!text) { input.focus(); addMessage({ role: "system", text: "Escreva a ideia e toque em 📝 de novo (ou use /anota ideia)." }); return; }
+      input.value = "";
+      send({ type: "capture", text });
+    });
     $("scare").addEventListener("click", () => {
       const target = otherDevices(peers)[0];
       if (!target) return;
@@ -806,7 +1076,7 @@
     $("input").addEventListener("blur", scheduleCollapse);
   }
 
-  setInterval(() => { tickIdleLife(); tickSocial(); renderMood(); }, 1000);
+  setInterval(() => { tickIdleLife(); tickSocial(); tickGoodnight(); renderMood(); }, 1000);
   setInterval(() => { if (currentView === "media" && !document.hidden) tickMedia(); }, SEEK_TICK_MS);
   requestAnimationFrame(frame);
   connect();
