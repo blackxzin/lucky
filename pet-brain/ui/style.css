@@ -3,6 +3,10 @@
 html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:14px system-ui, sans-serif; }
 .panel { display:flex; flex-direction:column; height:100%; padding:10px; gap:8px; }
+.main { display:flex; flex-direction:column; flex:1; min-height:0; gap:8px; }
+.view { display:flex; flex-direction:column; flex:1; min-height:0; gap:8px; }
+.view[hidden] { display:none; }
+.tabs[hidden], .chips[hidden], .badge[hidden] { display:none; }
 .top { display:flex; align-items:center; gap:10px; }
 .info { display:flex; flex-direction:column; flex:1; min-width:0; }
 .muted { color:var(--muted); font-size:12px; }
@@ -62,9 +66,33 @@ button.deny { background:#3a3f4d; color:var(--fg); }
 html.notch, html.notch body { background:transparent; }
 .notch .panel { background:var(--bg); border-radius:0 0 22px 22px; box-shadow:0 8px 28px rgba(0,0,0,.55); overflow:hidden; }
 .notch.collapsed .panel { padding:4px 14px; gap:0; justify-content:center; }
-.notch.collapsed .panel > :not(.top) { display:none; }
+.notch.collapsed .main, .notch.collapsed .tabs { display:none; }
 .notch.collapsed .top { gap:8px; }
 .notch.collapsed svg.pet { width:34px; height:34px; }
 .notch.collapsed .info > :not(#name) { display:none; }
 .notch.collapsed #name { font-size:13px; }
 .notch.collapsed .conn, .notch.collapsed .minimize { display:none; }
+.notch:not(.collapsed) .panel { flex-direction:row; padding:0; gap:0; }
+.notch:not(.collapsed) .side { flex:0 0 150px; display:flex; flex-direction:column; gap:14px; padding:14px 10px; background:#0d0f14; }
+.notch:not(.collapsed) .top { flex-direction:column; align-items:flex-start; gap:6px; position:relative; }
+.notch:not(.collapsed) svg.pet { width:56px; height:56px; }
+.notch:not(.collapsed) .info > :is(#stats, #brain) { display:none; }
+.notch:not(.collapsed) .conn { position:absolute; top:2px; right:2px; }
+.notch:not(.collapsed) .main { padding:14px; }
+.tabs { display:flex; flex-direction:column; gap:4px; }
+.tab { background:transparent; color:var(--muted); text-align:left; padding:9px 10px; border-radius:10px; font-weight:600; }
+.tab.on { background:#1c2a1c; color:var(--ok); }
+.badge { margin-left:4px; background:#2a2f3b; color:var(--fg); border-radius:999px; padding:0 7px; font-size:11px; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; }
+.chip { background:#1b1e26; color:var(--fg); border-radius:999px; padding:6px 12px; font-size:12px; font-weight:600; }
+.chip:hover { background:#262b36; }
+.card { background:var(--card); border:1px solid #2a3040; border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:12px; }
+.card.media { align-items:center; text-align:center; }
+.cover { width:64px; height:64px; border-radius:12px; background:linear-gradient(135deg,#c0503a,#7a2f5c); display:grid; place-items:center; font-size:28px; }
+.track { display:flex; flex-direction:column; gap:2px; max-width:100%; overflow-wrap:anywhere; }
+.controls, .volume { display:flex; align-items:center; gap:10px; }
+.round { width:40px; height:40px; border-radius:50%; background:#2a2f3b; color:var(--fg); padding:0; }
+.round.big { width:52px; height:52px; background:#fff; color:#10131a; font-size:18px; }
+.peer-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.peer-list li { display:flex; align-items:center; gap:8px; }
+.peer-list .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); }

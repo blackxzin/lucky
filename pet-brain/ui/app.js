@@ -23,6 +23,13 @@
   let collapseTimer = 0;
 
   const NOTCH_COLLAPSE_MS = 700;
+  const MEDIA_POLL_MS = 3000;
+  const DEVICE_LABELS = { pc: "💻 PC", phone: "📱 Celular", unknown: "❔ Aparelho" };
+  const SUGGESTIONS = ["toca uma música", "como está meu PC?", "me lembra de beber água em 30 minutos", "anota que preciso comprar café", "conta uma piada"];
+  /** Quem sou eu para o hub: o Electron é o PC, o app Android é o celular. */
+  const device = window.petHost ? "pc" : window.PetHost ? "phone" : undefined;
+  let peers = [];
+  let currentView = "home";
   const isNotch = new URLSearchParams(location.search).get("notch") === "1";
 
   async function readToken() {
@@ -173,6 +180,38 @@
     if (next.approvals.length > 0) setNotch(true);
   }
 
+  function renderPeers() {
+    const list = $("peer-list");
+    list.replaceChildren();
+    peers.forEach((name) => {
+      const row = el("li", "");
+      row.append(el("span", "dot"), el("span", "", (DEVICE_LABELS[name] || name) + (name === device ? " (este)" : "")));
+      list.appendChild(row);
+    });
+    const others = peers.filter((name) => name !== device).length;
+    const badge = $("peer-count");
+    badge.hidden = peers.length < 2;
+    badge.textContent = String(peers.length);
+    $("poke").disabled = others === 0;
+  }
+
+  function renderMedia(status) {
+    const live = status.available;
+    $("media-title").textContent = live ? (status.title || "Sem título") : "Nada tocando";
+    $("media-artist").textContent = live ? (status.artist || "–") : "Abra um player no PC";
+    $("media-toggle").textContent = live && status.playing ? "⏸" : "▶";
+    $("media-volume").textContent = live ? Math.round(status.volume * 100) + "%" : "–";
+  }
+
+  function askMedia(action) { send({ type: "media", action }); }
+
+  function showView(view) {
+    currentView = view;
+    ["home", "media", "peers"].forEach((name) => { $("view-" + name).hidden = name !== view; });
+    document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("on", tab.dataset.view === view));
+    if (view === "media") askMedia("status");
+  }
+
   function handle(data) {
     lastActivity = Date.now();
     if (data.type === "hello") {
@@ -184,6 +223,12 @@
       addMessage(data.message);
       fx(data.message.role === "system" ? "confused" : "blink");
     }
+    else if (data.type === "peers") { peers = data.devices; renderPeers(); }
+    else if (data.type === "media") renderMedia(data);
+    else if (data.type === "signal") {
+      fx("surprised");
+      addMessage({ role: "system", text: (DEVICE_LABELS[data.from] || "Aparelho") + " te cutucou 👋" });
+    }
     else if (data.type === "error") addMessage({ role: "system", text: data.text });
   }
 
@@ -193,7 +238,7 @@
     socket = new WebSocket(scheme + location.host + "/ws");
     socket.addEventListener("open", () => {
       $("conn").classList.add("on");
-      socket.send(JSON.stringify({ type: "auth", token }));
+      socket.send(JSON.stringify(device ? { type: "auth", token, device } : { type: "auth", token }));
     });
     socket.addEventListener("message", (ev) => {
       try { handle(JSON.parse(ev.data)); } catch (e) { /* ignora lixo */ }
@@ -249,6 +294,20 @@
   }
 
   if (isNotch) {
+    $("tabs").hidden = false;
+    const chips = $("chips");
+    chips.hidden = false;
+    SUGGESTIONS.forEach((text) => {
+      const chip = el("button", "chip", text);
+      chip.type = "button";
+      chip.addEventListener("click", () => { lastActivity = Date.now(); send({ type: "chat", text }); });
+      chips.appendChild(chip);
+    });
+    document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => showView(tab.dataset.view)));
+    document.querySelectorAll("[data-media]").forEach((button) => button.addEventListener("click", () => askMedia(button.dataset.media)));
+    $("poke").addEventListener("click", () => send({ type: "signal", kind: "poke" }));
+    setInterval(() => { if (currentView === "media" && !document.hidden) askMedia("status"); }, MEDIA_POLL_MS);
+    renderPeers();
     document.documentElement.classList.add("notch", "collapsed");
     const scheduleCollapse = () => {
       clearTimeout(collapseTimer);

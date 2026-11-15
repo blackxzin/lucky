@@ -11,6 +11,7 @@ import { assertBindHost } from "./bind.js";
 import { createFallbackAgent } from "./fallback-agent.js";
 import { createHubCore } from "./core.js";
 import { buildMcpConfig } from "./mcp-config.js";
+import { createMedia } from "./media.js";
 import { buildOpenCodeConfig, createOpenCodeAgent } from "./opencode-agent.js";
 import { buildPersona } from "./persona.js";
 import { createHubServer } from "./server.js";
@@ -67,6 +68,7 @@ export async function startHub(config: Config, runtime: HubRuntime): Promise<str
     uiDir: runtime.uiDir,
     host: config.hubHost,
     port: config.hubPort,
+    media: createMedia({ run }),
   });
   /** Uma execução por rótulo: se a anterior ainda não acabou, esta é pulada (o resumo diário não escreve duas vezes). */
   const running = new Set<string>();

@@ -458,3 +458,88 @@ describe("hub pending-approvals endpoint (for the phone notification)", () => {
     });
   });
 });
+
+describe("hub devices", () => {
+  async function authedAs(device: string): Promise<Client> {
+    const client = await open();
+    client.socket.send(JSON.stringify({ type: "auth", token: TOKEN, device }));
+    expect((await client.next()).type).toBe("hello");
+    return client;
+  }
+
+  test("announces which devices are connected", async () => {
+    await start();
+    const pc = await authedAs("pc");
+    expect(await pc.next()).toEqual({ type: "peers", devices: ["pc"] });
+
+    const phone = await authedAs("phone");
+
+    expect(await phone.next()).toEqual({ type: "peers", devices: ["pc", "phone"] });
+    expect(await pc.next()).toEqual({ type: "peers", devices: ["pc", "phone"] });
+    phone.socket.close();
+    expect(await pc.next()).toEqual({ type: "peers", devices: ["pc"] });
+  });
+
+  test("relays a signal to the other devices but not back to the sender", async () => {
+    await start();
+    const pc = await authedAs("pc");
+    await pc.next();
+    const phone = await authedAs("phone");
+    await phone.next();
+    await pc.next();
+
+    phone.socket.send(JSON.stringify({ type: "signal", kind: "poke" }));
+
+    expect(await pc.next()).toEqual({ type: "signal", kind: "poke", from: "phone" });
+    phone.socket.send(JSON.stringify({ type: "ping" }));
+    expect((await phone.next()).type).toBe("pong");
+  });
+
+  test("rejects an unknown signal or device name", async () => {
+    await start();
+    const client = await authedAs("pc");
+    await client.next();
+
+    client.socket.send(JSON.stringify({ type: "signal", kind: "explode" }));
+
+    expect((await client.next()).type).toBe("error");
+    const bad = await open();
+    bad.socket.send(JSON.stringify({ type: "auth", token: TOKEN, device: "../etc" }));
+    expect(await bad.closed).toBe(4401);
+  });
+
+  test("answers media requests through the injected controller", async () => {
+    const calls: string[] = [];
+    await start({
+      media: async (action) => {
+        calls.push(action);
+        return { available: true, playing: true, title: "One For The Road", artist: "Arctic Monkeys", volume: 0.6 };
+      },
+    });
+    const client = await authedAs("pc");
+    await client.next();
+
+    client.socket.send(JSON.stringify({ type: "media", action: "next" }));
+
+    expect(await client.next()).toEqual({
+      type: "media",
+      available: true,
+      playing: true,
+      title: "One For The Road",
+      artist: "Arctic Monkeys",
+      volume: 0.6,
+    });
+    expect(calls).toEqual(["next"]);
+  });
+
+  test("refuses media when no controller is configured or the action is unknown", async () => {
+    await start();
+    const client = await authedAs("pc");
+    await client.next();
+
+    client.socket.send(JSON.stringify({ type: "media", action: "status" }));
+    expect((await client.next()).type).toBe("error");
+    client.socket.send(JSON.stringify({ type: "media", action: "rm -rf" }));
+    expect((await client.next()).type).toBe("error");
+  });
+});

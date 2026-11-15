@@ -6,6 +6,7 @@ import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { HubCore, HubState } from "./core.js";
 import { createLockout } from "./lockout.js";
+import type { MediaController } from "./media.js";
 import { parseClientMessage } from "./protocol.js";
 import { tokenMatches } from "./token.js";
 
@@ -46,6 +47,8 @@ export interface HubServerOptions {
   authTimeoutMs?: number;
   /** Quanto /api/pending?since=... espera por uma mudança antes de responder igual. */
   pendingWaitMs?: number;
+  /** Controle de música do PC. Sem ele, pedidos "media" são recusados. */
+  media?: MediaController;
   now?: () => number;
 }
 
@@ -98,8 +101,14 @@ export function createHubServer(options: HubServerOptions): HubServer {
     allowedHosts === undefined || allowedHosts.has((request.headers.host ?? "").toLowerCase());
 
   const authenticated = new Set<WebSocket>();
+  /** Qual aparelho (pc, celular) é cada socket autenticado; só quem se identificou entra. */
+  const devices = new Map<WebSocket, string>();
   const pendingByAddress = new Map<string, number>();
   const send = (socket: WebSocket, payload: unknown): void => socket.send(JSON.stringify(payload));
+  const broadcastPeers = (): void => {
+    const names = [...new Set(devices.values())].sort();
+    authenticated.forEach((socket) => send(socket, { type: "peers", devices: names }));
+  };
 
   interface PendingView {
     approvals: Array<{ id: string; tool: string; risk: string }>;
@@ -219,10 +228,14 @@ export function createHubServer(options: HubServerOptions): HubServer {
       if (message?.type === "auth" && tokenMatches(token, message.token)) {
         lockout.succeed(address);
         authenticated.add(socket);
+        if (message.device !== undefined) devices.set(socket, message.device);
         releasePending(socket, address);
         core
           .snapshot()
-          .then((snapshot) => send(socket, { type: "hello", ...snapshot }))
+          .then((snapshot) => {
+            send(socket, { type: "hello", ...snapshot });
+            if (devices.has(socket)) broadcastPeers();
+          })
           .catch((error: unknown) => logError("falha ao montar o estado", error));
         return;
       }
@@ -236,6 +249,25 @@ export function createHubServer(options: HubServerOptions): HubServer {
     }
     if (message.type === "ping") {
       send(socket, { type: "pong" });
+      return;
+    }
+    if (message.type === "signal") {
+      const from = devices.get(socket) ?? "unknown";
+      authenticated.forEach((other) => other !== socket && send(other, { type: "signal", kind: message.kind, from }));
+      return;
+    }
+    if (message.type === "media") {
+      if (options.media === undefined) {
+        send(socket, { type: "error", text: "Música indisponível neste aparelho." });
+        return;
+      }
+      options.media(message.action).then(
+        (status) => send(socket, { type: "media", ...status }),
+        (error: unknown) => {
+          logError("falha no controle de música", error);
+          send(socket, { type: "error", text: "Não consegui controlar a música." });
+        },
+      );
       return;
     }
     const work = message.type === "chat" ? core.chat(message.text) : core.decide(message.id, message.approved);
@@ -255,6 +287,7 @@ export function createHubServer(options: HubServerOptions): HubServer {
     socket.on("close", () => {
       clearTimeout(authTimer);
       if (!authenticated.delete(socket)) releasePending(socket, address);
+      else if (devices.delete(socket)) broadcastPeers();
     });
   });
 

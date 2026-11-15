@@ -8,32 +8,70 @@
 </head>
 <body>
 <main class="panel">
-  <header class="top">
-    <svg id="pet" class="pet mood-idle" viewBox="0 0 100 100" role="img" aria-label="Pet">
-      <rect class="bezel" x="6" y="22" width="88" height="56" rx="8"/>
-      <rect class="screen" x="13" y="29" width="74" height="42" rx="4"/>
-      <g id="eyes" class="eyes">
-        <rect class="eye eye-l" x="29" y="43" width="14" height="14"/>
-        <rect class="eye eye-r" x="57" y="43" width="14" height="14"/>
-      </g>
-      <circle class="led" cx="82" cy="74" r="1.6"/>
-    </svg>
-    <div class="info">
-      <strong id="name">Pet</strong>
-      <span id="level" class="muted">nível –</span>
-      <span id="stats" class="muted">– neurônios · – conexões</span>
-      <span id="brain" class="muted">cérebro: – · 0 lembretes</span>
-    </div>
-    <span id="conn" class="conn" title="conexão"></span>
-    <button id="minimize" class="minimize" type="button" aria-label="Minimizar" hidden>—</button>
-  </header>
-  <section id="approvals" class="approvals" aria-live="polite"></section>
-  <section id="log" class="log" aria-live="polite"></section>
-  <form id="form" class="form" autocomplete="off">
-    <input id="input" type="text" maxlength="8000" placeholder="Fala com o pet…" aria-label="Mensagem">
-    <button id="mic" class="mic" type="button" aria-label="Microfone (ligar ou desligar)" hidden>🎤</button>
-    <button type="submit">Enviar</button>
-  </form>
+  <aside class="side">
+    <header class="top">
+      <svg id="pet" class="pet mood-idle" viewBox="0 0 100 100" role="img" aria-label="Pet">
+        <rect class="bezel" x="6" y="22" width="88" height="56" rx="8"/>
+        <rect class="screen" x="13" y="29" width="74" height="42" rx="4"/>
+        <g id="eyes" class="eyes">
+          <rect class="eye eye-l" x="29" y="43" width="14" height="14"/>
+          <rect class="eye eye-r" x="57" y="43" width="14" height="14"/>
+        </g>
+        <circle class="led" cx="82" cy="74" r="1.6"/>
+      </svg>
+      <div class="info">
+        <strong id="name">Pet</strong>
+        <span id="level" class="muted">nível –</span>
+        <span id="stats" class="muted">– neurônios · – conexões</span>
+        <span id="brain" class="muted">cérebro: – · 0 lembretes</span>
+      </div>
+      <span id="conn" class="conn" title="conexão"></span>
+      <button id="minimize" class="minimize" type="button" aria-label="Minimizar" hidden>—</button>
+    </header>
+    <nav id="tabs" class="tabs" aria-label="Seções" hidden>
+      <button type="button" class="tab on" data-view="home">🏠 Início</button>
+      <button type="button" class="tab" data-view="media">🎵 Música</button>
+      <button type="button" class="tab" data-view="peers">🔗 Aparelhos <span id="peer-count" class="badge" hidden></span></button>
+    </nav>
+  </aside>
+  <div class="main">
+    <section id="approvals" class="approvals" aria-live="polite"></section>
+    <section id="view-home" class="view">
+      <div id="chips" class="chips" hidden></div>
+      <section id="log" class="log" aria-live="polite"></section>
+      <form id="form" class="form" autocomplete="off">
+        <input id="input" type="text" maxlength="8000" placeholder="Fala com o pet…" aria-label="Mensagem">
+        <button id="mic" class="mic" type="button" aria-label="Microfone (ligar ou desligar)" hidden>🎤</button>
+        <button type="submit">Enviar</button>
+      </form>
+    </section>
+    <section id="view-media" class="view" hidden>
+      <div class="card media">
+        <div class="cover" aria-hidden="true">🎵</div>
+        <div class="track">
+          <strong id="media-title">Nada tocando</strong>
+          <span id="media-artist" class="muted">–</span>
+        </div>
+        <div class="controls">
+          <button type="button" class="round" data-media="previous" aria-label="Anterior">⏮</button>
+          <button type="button" class="round big" id="media-toggle" data-media="play-pause" aria-label="Tocar ou pausar">▶</button>
+          <button type="button" class="round" data-media="next" aria-label="Próxima">⏭</button>
+        </div>
+        <div class="volume">
+          <button type="button" class="round" data-media="volume-down" aria-label="Diminuir volume">🔉</button>
+          <span id="media-volume" class="muted">–</span>
+          <button type="button" class="round" data-media="volume-up" aria-label="Aumentar volume">🔊</button>
+        </div>
+      </div>
+    </section>
+    <section id="view-peers" class="view" hidden>
+      <div class="card">
+        <strong>Aparelhos conectados</strong>
+        <ul id="peer-list" class="peer-list"></ul>
+        <button type="button" id="poke">👋 Cutucar o outro pet</button>
+      </div>
+    </section>
+  </div>
 </main>
 <script src="/app.js"></script>
 </body>
