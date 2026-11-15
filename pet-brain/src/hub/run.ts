@@ -1,13 +1,17 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config.js";
 import { createApprovalStore } from "../pc/approvals.js";
 import { createAuditLog } from "../pc/audit.js";
+import { createHabitStore } from "../habits/store.js";
 import { createReminderStore } from "../reminders/store.js";
 import { spawnRunner } from "../proc/run.js";
 import { maybeWriteDigest } from "../vault/digest.js";
 import { createAgent } from "./agent.js";
 import { assertBindHost } from "./bind.js";
+import { createSystemSources } from "./alert-sources.js";
+import { createAlerts } from "./alerts.js";
 import { createFallbackAgent } from "./fallback-agent.js";
 import { createHubCore } from "./core.js";
 import { buildMcpConfig } from "./mcp-config.js";
@@ -61,7 +65,17 @@ export async function startHub(config: Config, runtime: HubRuntime): Promise<str
   });
   const agent = createFallbackAgent(claude, opencode);
   const reminders = createReminderStore({ dir: join(config.stateDir, "reminders") });
-  const core = createHubCore({ agent, approvals, audit, reminders, vaultRoot: config.vaultRoot, petName: config.petName });
+  const habits = createHabitStore({ dir: join(config.stateDir, "habits") });
+  const core = createHubCore({
+    agent,
+    approvals,
+    audit,
+    reminders,
+    habits,
+    alerts: createAlerts(createSystemSources(homedir())),
+    vaultRoot: config.vaultRoot,
+    petName: config.petName,
+  });
   const server = createHubServer({
     core,
     token,

@@ -10,6 +10,7 @@ import { loadOrCreateToken, tokenMatches } from "../src/hub/token.js";
 import { createApprovalStore, type ApprovalStore } from "../src/pc/approvals.js";
 import type { AuditEntry } from "../src/pc/audit.js";
 import { ProcError } from "../src/proc/run.js";
+import { createHabitStore } from "../src/habits/store.js";
 import { createReminderStore, type ReminderStore } from "../src/reminders/store.js";
 import { writeNote } from "../src/vault/vault.js";
 import { fakeRun } from "./helpers.js";
@@ -168,6 +169,7 @@ describe("hub core", () => {
       approvals,
       audit: { record: async (entry) => void audited.push(entry), recent: async () => recent, between: async () => [] },
       reminders,
+      habits: createHabitStore({ dir: join(dir, "habits") }),
       vaultRoot,
       petName: "Bit",
     });
@@ -267,7 +269,7 @@ describe("hub core", () => {
   test("the owner can add, list and cancel reminders and every client hears about it", async () => {
     const hub = core();
     clock = new Date("2026-11-10T12:00:00.000Z");
-    const timed = createHubCore({ agent: { send: async () => ({ text: "x", sessionId: undefined }) }, approvals, audit: { record: async () => undefined, recent: async () => [], between: async () => [] }, reminders, vaultRoot, petName: "Bit", now: () => clock });
+    const timed = createHubCore({ agent: { send: async () => ({ text: "x", sessionId: undefined }) }, approvals, audit: { record: async () => undefined, recent: async () => [], between: async () => [] }, reminders, habits: createHabitStore({ dir: join(dir, "habits") }), vaultRoot, petName: "Bit", now: () => clock });
     timed.subscribe((event) => events.push(event));
 
     await timed.addReminder("beber água", 30);
@@ -282,9 +284,55 @@ describe("hub core", () => {
   });
 
   test("a reminder in the past is refused", async () => {
-    const timed = createHubCore({ agent: { send: async () => ({ text: "x", sessionId: undefined }) }, approvals, audit: { record: async () => undefined, recent: async () => [], between: async () => [] }, reminders, vaultRoot, petName: "Bit", now: () => clock });
+    const timed = createHubCore({ agent: { send: async () => ({ text: "x", sessionId: undefined }) }, approvals, audit: { record: async () => undefined, recent: async () => [], between: async () => [] }, reminders, habits: createHabitStore({ dir: join(dir, "habits") }), vaultRoot, petName: "Bit", now: () => clock });
 
     await expect(timed.addReminder("x", 0)).rejects.toThrow();
+  });
+
+  test("tick tells the owner about a PC alert once", async () => {
+    const pending = ["Disco quase cheio: 95% usado."];
+    const alerting = createHubCore({
+      agent: { send: async () => ({ text: "x", sessionId: undefined }) },
+      approvals,
+      audit: { record: async () => undefined, recent: async () => [], between: async () => [] },
+      reminders,
+      habits: createHabitStore({ dir: join(dir, "habits") }),
+      alerts: { check: async () => pending.splice(0) },
+      vaultRoot,
+      petName: "Bit",
+      now: () => clock,
+    });
+    alerting.subscribe((event) => events.push(event));
+
+    await alerting.tick();
+    await alerting.tick();
+
+    const said = events.flatMap((event) => (event.type === "message" ? [event.message.text] : []));
+    expect(said).toEqual(["⚠️ Disco quase cheio: 95% usado."]);
+  });
+
+  test("tick nudges a due habit once per interval", async () => {
+    const habitStore = createHabitStore({ dir: join(dir, "habits-tick"), now: () => clock });
+    const nudging = createHubCore({
+      agent: { send: async () => ({ text: "x", sessionId: undefined }) },
+      approvals,
+      audit: { record: async () => undefined, recent: async () => [], between: async () => [] },
+      reminders,
+      habits: habitStore,
+      vaultRoot,
+      petName: "Bit",
+      now: () => clock,
+    });
+    nudging.subscribe((event) => events.push(event));
+    clock = new Date(2026, 10, 10, 12, 0, 0);
+    await habitStore.add({ name: "beber água", everyMinutes: 60 });
+    clock = new Date(2026, 10, 10, 13, 5, 0);
+
+    await nudging.tick();
+    await nudging.tick();
+
+    const said = events.flatMap((event) => (event.type === "message" ? [event.message.text] : []));
+    expect(said).toEqual(["🌱 Hora do hábito: beber água (hoje: 0x)"]);
   });
 
   test("tick delivers a due reminder to the chat once", async () => {
@@ -314,6 +362,7 @@ describe("hub core", () => {
       approvals,
       audit: { record: async () => Promise.reject(new Error("disco cheio")), recent: async () => [], between: async () => [] },
       reminders,
+      habits: createHabitStore({ dir: join(dir, "habits") }),
       vaultRoot,
       petName: "Bit",
     });
@@ -330,6 +379,7 @@ describe("hub core", () => {
       approvals,
       audit: { record: async () => undefined, recent: async () => Promise.reject(new Error("falha")), between: async () => [] },
       reminders,
+      habits: createHabitStore({ dir: join(dir, "habits") }),
       vaultRoot,
       petName: "Bit",
     });

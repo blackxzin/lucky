@@ -32,6 +32,7 @@
     <nav id="tabs" class="tabs" aria-label="Seções" hidden>
       <button type="button" class="tab on" data-view="home">🏠 Início</button>
       <button type="button" class="tab" data-view="reminders">⏰ Lembretes</button>
+      <button type="button" class="tab" data-view="habits">🌱 Hábitos</button>
       <button type="button" class="tab" data-view="media">🎵 Música</button>
       <button type="button" class="tab" data-view="peers">🔗 Aparelhos <span id="peer-count" class="badge" hidden></span></button>
     </nav>
@@ -54,6 +55,14 @@
         <input id="reminder-text" type="text" maxlength="200" placeholder="Me lembra de…" aria-label="Texto do lembrete" required>
         <input id="reminder-min" class="min" type="number" min="1" max="525600" value="30" aria-label="Minutos">
         <button type="submit">Agendar</button>
+      </form>
+    </section>
+    <section id="view-habits" class="view" hidden>
+      <ul id="habit-list" class="reminder-list" aria-live="polite"></ul>
+      <form id="habit-form" class="form" autocomplete="off">
+        <input id="habit-name" type="text" maxlength="60" placeholder="Hábito (ex.: beber água)…" aria-label="Nome do hábito" required>
+        <input id="habit-min" class="min" type="number" min="5" max="1440" value="60" aria-label="A cada quantos minutos">
+        <button type="submit">Criar</button>
       </form>
     </section>
     <section id="view-media" class="view" hidden>
@@ -80,7 +89,7 @@
         <strong>Aparelhos conectados</strong>
         <ul id="peer-list" class="peer-list"></ul>
         <div class="row">
-          <button type="button" id="wave">👋 Dar oi</button>
+          <button type="button" id="wave-hi">👋 Dar oi</button>
           <button type="button" id="poke">👉 Cutucar</button>
         </div>
       </div>

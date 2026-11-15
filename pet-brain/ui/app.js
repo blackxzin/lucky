@@ -37,6 +37,7 @@
       left: (who) => who + " sumiu. Tá, tanto faz.",
       poke: { fx: "confused", happy: false, text: (who) => who + " me cutucou. Sério? 😏" },
       wave: { fx: "blink", happy: false, text: (who) => who + " mandou um oi. Oi. 😎" },
+      greet: { morning: "Bom dia. Café primeiro, bug depois. ☕", afternoon: "Boa tarde. Bora render. 😎", evening: "Boa noite. Hora do modo hacker. 🌙", late: "Ainda acordado? Respeito. Mas dorme. 🦉" },
     },
     phone: {
       eye: "#ff9ecb",
@@ -44,6 +45,7 @@
       left: (who) => who + " foi embora 🥺",
       poke: { fx: "surprised", happy: true, text: (who) => who + " me cutucou! 🥰" },
       wave: { fx: "blink", happy: true, text: (who) => who + " mandou um oi! 💖" },
+      greet: { morning: "Bom diaaa! Dormiu bem? 🌸", afternoon: "Boa tarde! Já bebeu água? 💧", evening: "Boa noite! Como foi o dia? 🌷", late: "Tá tarde... vai descansar, vai 🥺" },
     },
   };
   const personality = PERSONALITY[device] || PERSONALITY.pc;
@@ -53,6 +55,7 @@
   let currentView = "home";
   let reminderItems = [];
   let knownReminderCount = -1;
+  let habitItems = [];
   const TIMER_PRESETS = [1, 5, 10, 25];
   const isNotch = new URLSearchParams(location.search).get("notch") === "1";
 
@@ -150,6 +153,45 @@
       const height = WAVE_MIN_PX + waveState.shown * (WAVE_MAX_PX - WAVE_MIN_PX) * WAVE_SHAPE[index] * wobble;
       bar.style.height = height.toFixed(1) + "px";
     });
+  }
+
+  const BLINK_MIN_MS = 4000;
+  const BLINK_SPAN_MS = 5000;
+  const CURIOUS_MIN_MS = 25000;
+  const CURIOUS_SPAN_MS = 35000;
+  const CURIOUS_FX = ["confused", "surprised", "blink"];
+  const idleLife = { nextBlink: Date.now() + BLINK_MIN_MS, nextCurious: Date.now() + CURIOUS_MIN_MS };
+
+  /** Com o pet parado ele pisca sozinho e, de vez em quando, estranha algo: parece vivo mesmo sem ninguém falar com ele. */
+  function tickIdleLife() {
+    const now = Date.now();
+    if (mood() !== "idle" || now < fxUntil) return;
+    if (now >= idleLife.nextCurious) {
+      idleLife.nextCurious = now + CURIOUS_MIN_MS + Math.random() * CURIOUS_SPAN_MS;
+      fx(CURIOUS_FX[Math.floor(Math.random() * CURIOUS_FX.length)]);
+    } else if (now >= idleLife.nextBlink) {
+      idleLife.nextBlink = now + BLINK_MIN_MS + Math.random() * BLINK_SPAN_MS;
+      fx("blink");
+    }
+  }
+
+  function dayPart() {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return "morning";
+    if (hour >= 12 && hour < 18) return "afternoon";
+    if (hour >= 18 && hour < 23) return "evening";
+    return "late";
+  }
+
+  /** Uma saudação por período do dia, por aparelho: o pet puxa assunto sem ninguém pedir. */
+  function greetOncePerPart() {
+    const key = new Date().toDateString() + ":" + dayPart();
+    try {
+      if (localStorage.getItem("pet-greeted") === key) return;
+      localStorage.setItem("pet-greeted", key);
+    } catch (e) { /* sem armazenamento: cumprimenta de novo, sem problema */ }
+    addMessage({ role: "pet", text: personality.greet[dayPart()] });
+    happyUntil = Date.now() + HAPPY_MS;
   }
 
   function renderMood() {
@@ -252,7 +294,7 @@
     badge.hidden = peers.length < 2;
     badge.textContent = String(peers.length);
     $("poke").disabled = others === 0;
-    $("wave").disabled = others === 0;
+    $("wave-hi").disabled = others === 0;
   }
 
   function renderMedia(status) {
@@ -295,14 +337,39 @@
     send({ type: "reminder_add", text: clean, inMinutes: minutes });
   }
 
+  function renderHabits() {
+    const list = $("habit-list");
+    list.replaceChildren();
+    if (habitItems.length === 0) {
+      list.appendChild(el("li", "muted", "Nenhum hábito. Crie um e eu te cutuco."));
+      return;
+    }
+    habitItems.forEach((item) => {
+      const row = el("li", "reminder");
+      const every = item.everyMinutes >= 60 && item.everyMinutes % 60 === 0 ? item.everyMinutes / 60 + " h" : item.everyMinutes + " min";
+      row.append(el("span", "left", item.doneToday + "×"), el("span", "text", item.name + " · a cada " + every));
+      const done = el("button", "icon allow", "✔");
+      done.type = "button";
+      done.setAttribute("aria-label", "Fiz " + item.name);
+      done.addEventListener("click", () => { happyUntil = Date.now() + HAPPY_MS; send({ type: "habit_done", id: item.id }); });
+      const remove = el("button", "icon deny", "✕");
+      remove.type = "button";
+      remove.setAttribute("aria-label", "Apagar " + item.name);
+      remove.addEventListener("click", () => send({ type: "habit_remove", id: item.id }));
+      row.append(done, remove);
+      list.appendChild(row);
+    });
+  }
+
   function askMedia(action) { send({ type: "media", action }); }
 
   function showView(view) {
     currentView = view;
-    ["home", "reminders", "media", "peers"].forEach((name) => { $("view-" + name).hidden = name !== view; });
+    ["home", "reminders", "habits", "media", "peers"].forEach((name) => { $("view-" + name).hidden = name !== view; });
     document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("on", tab.dataset.view === view));
     if (view === "media") askMedia("status");
     if (view === "reminders") send({ type: "reminders" });
+    if (view === "habits") send({ type: "habits" });
   }
 
   function handle(data) {
@@ -311,6 +378,7 @@
       log.replaceChildren();
       data.history.forEach(addMessage);
       renderState(data.state);
+      greetOncePerPart();
     } else if (data.type === "state") renderState(data.state);
     else if (data.type === "message") {
       addMessage(data.message);
@@ -319,6 +387,7 @@
     else if (data.type === "peers") { noticePeers(data.devices); peers = data.devices; renderPeers(); }
     else if (data.type === "media") renderMedia(data);
     else if (data.type === "reminders") { reminderItems = data.items; renderReminders(); }
+    else if (data.type === "habits") { habitItems = data.items; renderHabits(); }
     else if (data.type === "signal") {
       const who = DEVICE_LABELS[data.from] || "Aparelho";
       const reaction = data.kind === "wave" ? personality.wave : personality.poke;
@@ -421,7 +490,7 @@
     document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => showView(tab.dataset.view)));
     document.querySelectorAll("[data-media]").forEach((button) => button.addEventListener("click", () => askMedia(button.dataset.media)));
     $("poke").addEventListener("click", () => send({ type: "signal", kind: "poke" }));
-    $("wave").addEventListener("click", () => send({ type: "signal", kind: "wave" }));
+    $("wave-hi").addEventListener("click", () => send({ type: "signal", kind: "wave" }));
     setInterval(() => { if (currentView === "media" && !document.hidden) askMedia("status"); }, MEDIA_POLL_MS);
     TIMER_PRESETS.forEach((minutes) => {
       const button = el("button", "chip", "⏱ " + minutes + " min");
@@ -434,6 +503,15 @@
       addReminder($("reminder-text").value, Number.parseInt($("reminder-min").value, 10));
       $("reminder-text").value = "";
     });
+    $("habit-form").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const minutes = Number.parseInt($("habit-min").value, 10);
+      const name = $("habit-name").value.trim();
+      if (!name || !Number.isInteger(minutes) || minutes < 5) return;
+      send({ type: "habit_add", name, everyMinutes: minutes });
+      $("habit-name").value = "";
+    });
+    renderHabits();
     setInterval(() => { if (currentView === "reminders" && !document.hidden) renderReminders(); }, 1000);
     renderPeers();
     renderReminders();
@@ -448,7 +526,7 @@
     $("input").addEventListener("blur", scheduleCollapse);
   }
 
-  setInterval(renderMood, 1000);
+  setInterval(() => { tickIdleLife(); renderMood(); }, 1000);
   requestAnimationFrame(frame);
   connect();
 })();

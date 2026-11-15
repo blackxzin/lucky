@@ -1,9 +1,11 @@
 import { UserFacingError } from "../errors.js";
+import type { Habit, HabitStore } from "../habits/store.js";
 import type { Approval, ApprovalStore } from "../pc/approvals.js";
 import type { AuditLog } from "../pc/audit.js";
 import type { Reminder, ReminderStore } from "../reminders/store.js";
 import { vaultStats, type VaultStats } from "../vault/read.js";
 import type { Agent } from "./agent.js";
+import type { Alerts } from "./alerts.js";
 
 const MAX_HISTORY = 50;
 /** Um rodando mais os que esperam. Acima disso o hub recusa em vez de acumular. */
@@ -56,6 +58,10 @@ export interface HubCore {
   /** Agenda um lembrete daqui a `inMinutes`; todos os clientes recebem o estado novo. */
   addReminder(text: string, inMinutes: number): Promise<void>;
   cancelReminder(id: string): Promise<void>;
+  listHabits(): Promise<Habit[]>;
+  addHabit(name: string, everyMinutes: number): Promise<void>;
+  doneHabit(id: string): Promise<void>;
+  removeHabit(id: string): Promise<void>;
   subscribe(listener: (event: HubEvent) => void): () => void;
 }
 
@@ -64,6 +70,9 @@ export interface HubCoreOptions {
   approvals: ApprovalStore;
   audit: AuditLog;
   reminders: ReminderStore;
+  habits: HabitStore;
+  /** Avisos do próprio PC (disco, bateria, memória). Sem isso o pet só fala quando falam com ele. */
+  alerts?: Alerts;
   vaultRoot: string;
   petName: string;
   now?: () => Date;
@@ -77,7 +86,7 @@ function toPending(approval: Approval): PendingApproval {
 const MS_PER_MINUTE = 60_000;
 
 export function createHubCore(options: HubCoreOptions): HubCore {
-  const { agent, approvals, audit, reminders, vaultRoot, petName, now = () => new Date() } = options;
+  const { agent, approvals, audit, reminders, habits, alerts, vaultRoot, petName, now = () => new Date() } = options;
 
   let listeners: ReadonlyArray<(event: HubEvent) => void> = [];
   let history: readonly ChatMessage[] = [];
@@ -172,6 +181,8 @@ export function createHubCore(options: HubCoreOptions): HubCore {
   return {
     tick: async () => {
       for (const reminder of await reminders.takeDue()) say("pet", `⏰ Lembrete: ${reminder.text}`);
+      for (const habit of await habits.takeDue()) say("pet", `🌱 Hora do hábito: ${habit.name} (hoje: ${String(habit.doneToday)}x)`);
+      for (const warning of (await alerts?.check()) ?? []) say("pet", `⚠️ ${warning}`);
     },
 
     subscribe: (listener) => {
@@ -194,6 +205,16 @@ export function createHubCore(options: HubCoreOptions): HubCore {
       await reminders.remove(id);
       await emitState();
     },
+
+    listHabits: () => habits.list(),
+
+    addHabit: async (name, everyMinutes) => void (await habits.add({ name, everyMinutes })),
+
+    doneHabit: async (id) => {
+      if (!(await habits.done(id))) throw new UserFacingError("Esse hábito não existe mais.");
+    },
+
+    removeHabit: async (id) => void (await habits.remove(id)),
 
     refresh: async () => {
       const key = (await approvals.list()).map((approval) => approval.id).join(",");

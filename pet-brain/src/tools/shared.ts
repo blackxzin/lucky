@@ -3,6 +3,7 @@ import { UserFacingError } from "../errors.js";
 import type { MaestriClient } from "../maestri/client.js";
 import type { ApprovalStore } from "../pc/approvals.js";
 import type { AuditLog } from "../pc/audit.js";
+import type { HabitStore } from "../habits/store.js";
 import type { ProcessRunner } from "../proc/run.js";
 import type { ReminderStore } from "../reminders/store.js";
 
@@ -14,7 +15,10 @@ export interface ServerDeps {
   approvals: ApprovalStore;
   audit: AuditLog;
   reminders: ReminderStore;
+  habits: HabitStore;
   opencodeBin: string;
+  /** Só para testes: troca o fetch usado pelas ferramentas de consulta. */
+  fetch?: typeof fetch;
 }
 
 export type ToolRegistrar = (server: McpServer, deps: ServerDeps) => void;

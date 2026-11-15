@@ -26,6 +26,8 @@ describe("MCP server", () => {
 
     expect(tools.map((t) => t.name).sort()).toEqual([
       "approval_status",
+      "habit_add",
+      "habit_list",
       "maestri_ask",
       "maestri_check",
       "maestri_list",
@@ -33,6 +35,7 @@ describe("MCP server", () => {
       "maestri_raw",
       "memory_log",
       "opencode_run",
+      "pc_media",
       "pc_open_app",
       "pc_open_url",
       "pc_run",
@@ -45,6 +48,7 @@ describe("MCP server", () => {
       "vault_stats",
       "vault_write",
       "whatsapp_draft",
+      "wiki_lookup",
     ]);
   });
 

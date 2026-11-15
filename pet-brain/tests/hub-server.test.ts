@@ -22,6 +22,7 @@ interface FakeCore extends HubCore {
   decisions: Array<[string, boolean]>;
   refreshes: number;
   reminderCalls: string[];
+  habitCalls: string[];
   emit(event: HubEvent): void;
 }
 
@@ -32,6 +33,11 @@ function fakeCore(): FakeCore {
     decisions: [],
     refreshes: 0,
     reminderCalls: [],
+    habitCalls: [],
+    listHabits: async () => [{ id: "b".repeat(16), name: "beber água", everyMinutes: 60, nextAt: "2026-11-10T13:00:00.000Z", doneToday: 2 }],
+    addHabit: async (name, everyMinutes) => void core.habitCalls.push(`add:${name}:${everyMinutes}`),
+    doneHabit: async (id) => void core.habitCalls.push(`done:${id}`),
+    removeHabit: async (id) => void core.habitCalls.push(`remove:${id}`),
     listReminders: async () => [{ id: "a".repeat(16), text: "água", dueAt: "2026-11-10T12:30:00.000Z" }],
     addReminder: async (text, inMinutes) => void core.reminderCalls.push(`add:${text}:${inMinutes}`),
     cancelReminder: async (id) => void core.reminderCalls.push(`cancel:${id}`),
@@ -600,5 +606,49 @@ describe("hub reminders", () => {
     client.socket.send(JSON.stringify({ type: "reminder_add", text: "x", inMinutes: 5 }));
 
     expect(await client.next()).toEqual({ type: "error", text: "Lembrete no passado." });
+  });
+});
+
+describe("hub habits", () => {
+  async function authedClient(): Promise<Client> {
+    const client = await open();
+    client.socket.send(JSON.stringify({ type: "auth", token: TOKEN }));
+    expect((await client.next()).type).toBe("hello");
+    return client;
+  }
+
+  test("lists the habits on request", async () => {
+    await start();
+    const client = await authedClient();
+
+    client.socket.send(JSON.stringify({ type: "habits" }));
+
+    expect(await client.next()).toMatchObject({ type: "habits", items: [{ name: "beber água", doneToday: 2 }] });
+  });
+
+  test("changes go through the core and every client gets the fresh list", async () => {
+    await start();
+    const first = await authedClient();
+    const second = await authedClient();
+
+    first.socket.send(JSON.stringify({ type: "habit_add", name: "alongar", everyMinutes: 45 }));
+
+    expect((await first.next()).type).toBe("habits");
+    expect((await second.next()).type).toBe("habits");
+    first.socket.send(JSON.stringify({ type: "habit_done", id: "b".repeat(16) }));
+    first.socket.send(JSON.stringify({ type: "habit_remove", id: "b".repeat(16) }));
+    expect((await first.next()).type).toBe("habits");
+    expect((await first.next()).type).toBe("habits");
+    expect(core.habitCalls).toEqual(["add:alongar:45", "done:" + "b".repeat(16), "remove:" + "b".repeat(16)]);
+  });
+
+  test("rejects malformed habit requests", async () => {
+    await start();
+    const client = await authedClient();
+
+    client.socket.send(JSON.stringify({ type: "habit_add", name: "x", everyMinutes: 1 }));
+    expect((await client.next()).type).toBe("error");
+    client.socket.send(JSON.stringify({ type: "habit_done", id: "../x" }));
+    expect((await client.next()).type).toBe("error");
   });
 });

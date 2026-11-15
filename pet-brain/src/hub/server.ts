@@ -106,6 +106,12 @@ export function createHubServer(options: HubServerOptions): HubServer {
   const devices = new Map<WebSocket, string>();
   const pendingByAddress = new Map<string, number>();
   const send = (socket: WebSocket, payload: unknown): void => socket.send(JSON.stringify(payload));
+  const sendHabits = (socket: WebSocket): void => {
+    core.listHabits().then(
+      (items) => send(socket, { type: "habits", items }),
+      (error: unknown) => logError("falha ao listar hábitos", error),
+    );
+  };
   const broadcastPeers = (): void => {
     const names = [...new Set(devices.values())].sort();
     authenticated.forEach((socket) => send(socket, { type: "peers", devices: names }));
@@ -269,6 +275,23 @@ export function createHubServer(options: HubServerOptions): HubServer {
       work.catch((error: unknown) => {
         if (error instanceof UserFacingError) send(socket, { type: "error", text: error.message });
         else logError("falha ao mexer em lembrete", error);
+      });
+      return;
+    }
+    if (message.type === "habits") {
+      sendHabits(socket);
+      return;
+    }
+    if (message.type === "habit_add" || message.type === "habit_done" || message.type === "habit_remove") {
+      const work =
+        message.type === "habit_add"
+          ? core.addHabit(message.name, message.everyMinutes)
+          : message.type === "habit_done"
+            ? core.doneHabit(message.id)
+            : core.removeHabit(message.id);
+      work.then(() => authenticated.forEach(sendHabits)).catch((error: unknown) => {
+        if (error instanceof UserFacingError) send(socket, { type: "error", text: error.message });
+        else logError("falha ao mexer em hábito", error);
       });
       return;
     }

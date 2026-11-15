@@ -1,4 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerHabitTools } from "./tools/habits.js";
+import { registerInfoTools } from "./tools/info.js";
 import { registerMaestriTools } from "./tools/maestri.js";
 import { registerOpenTools } from "./tools/open.js";
 import { registerPcTools } from "./tools/pc.js";
@@ -17,6 +19,8 @@ export function createServer(deps: ServerDeps): McpServer {
   registerVaultTools(server, deps);
   registerPcTools(server, deps);
   registerOpenTools(server, deps);
+  registerInfoTools(server, deps);
   registerReminderTools(server, deps);
+  registerHabitTools(server, deps);
   return server;
 }

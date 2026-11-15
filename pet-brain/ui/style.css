@@ -114,3 +114,4 @@ input.min { flex:0 0 72px; }
 .transcribing .wave i:nth-child(even) { animation-delay:.15s; }
 @keyframes think-wave { 50% { height:14px; opacity:.5; } }
 @media (prefers-reduced-motion: reduce) { .transcribing .wave i { animation:none; } }
+.reminder .icon.allow { background:var(--ok); color:#06140a; }
