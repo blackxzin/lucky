@@ -507,6 +507,55 @@ describe("hub devices", () => {
     expect((await phone.next()).type).toBe("pong");
   });
 
+  test("relays a scare to the other device", async () => {
+    await start();
+    const pc = await authedAs("pc");
+    await pc.next();
+    const phone = await authedAs("phone");
+    await phone.next();
+    await pc.next();
+
+    pc.socket.send(JSON.stringify({ type: "signal", kind: "scare" }));
+
+    expect(await phone.next()).toEqual({ type: "signal", kind: "scare", from: "pc" });
+  });
+
+  test("tells every device who is asleep, and clears it when they wake or leave", async () => {
+    await start();
+    const pc = await authedAs("pc");
+    await pc.next();
+    const phone = await authedAs("phone");
+    await phone.next();
+    await pc.next();
+
+    phone.socket.send(JSON.stringify({ type: "sleep", asleep: true }));
+    expect(await pc.next()).toEqual({ type: "asleep", devices: ["phone"] });
+    expect(await phone.next()).toEqual({ type: "asleep", devices: ["phone"] });
+
+    phone.socket.send(JSON.stringify({ type: "sleep", asleep: false }));
+    expect(await pc.next()).toEqual({ type: "asleep", devices: [] });
+    await phone.next();
+
+    phone.socket.send(JSON.stringify({ type: "sleep", asleep: true }));
+    await pc.next();
+    await phone.next();
+    phone.socket.close();
+    expect(await pc.next()).toEqual({ type: "peers", devices: ["pc"] });
+    expect(await pc.next()).toEqual({ type: "asleep", devices: [] });
+  });
+
+  test("ignores a sleep report from a socket that never said which device it is", async () => {
+    await start();
+    const anonymous = await open();
+    anonymous.socket.send(JSON.stringify({ type: "auth", token: TOKEN }));
+    await anonymous.next();
+
+    anonymous.socket.send(JSON.stringify({ type: "sleep", asleep: true }));
+    anonymous.socket.send(JSON.stringify({ type: "ping" }));
+
+    expect((await anonymous.next()).type).toBe("pong");
+  });
+
   test("rejects an unknown signal or device name", async () => {
     await start();
     const client = await authedAs("pc");

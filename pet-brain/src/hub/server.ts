@@ -104,6 +104,8 @@ export function createHubServer(options: HubServerOptions): HubServer {
   const authenticated = new Set<WebSocket>();
   /** Qual aparelho (pc, celular) é cada socket autenticado; só quem se identificou entra. */
   const devices = new Map<WebSocket, string>();
+  /** Quais aparelhos estão dormindo (o próprio pet avisa): o outro pet pode acordar ou assustar quem dorme. */
+  const sleeping = new Set<WebSocket>();
   const pendingByAddress = new Map<string, number>();
   const send = (socket: WebSocket, payload: unknown): void => socket.send(JSON.stringify(payload));
   const sendHabits = (socket: WebSocket): void => {
@@ -111,6 +113,11 @@ export function createHubServer(options: HubServerOptions): HubServer {
       (items) => send(socket, { type: "habits", items }),
       (error: unknown) => logError("falha ao listar hábitos", error),
     );
+  };
+  const asleepNames = (): string[] => [...new Set([...sleeping].map((socket) => devices.get(socket) ?? "unknown"))].sort();
+  const broadcastAsleep = (): void => {
+    const names = asleepNames();
+    authenticated.forEach((socket) => send(socket, { type: "asleep", devices: names }));
   };
   const broadcastPeers = (): void => {
     const names = [...new Set(devices.values())].sort();
@@ -242,6 +249,7 @@ export function createHubServer(options: HubServerOptions): HubServer {
           .then((snapshot) => {
             send(socket, { type: "hello", ...snapshot });
             if (devices.has(socket)) broadcastPeers();
+            if (sleeping.size > 0) send(socket, { type: "asleep", devices: asleepNames() });
           })
           .catch((error: unknown) => logError("falha ao montar o estado", error));
         return;
@@ -256,6 +264,13 @@ export function createHubServer(options: HubServerOptions): HubServer {
     }
     if (message.type === "ping") {
       send(socket, { type: "pong" });
+      return;
+    }
+    if (message.type === "sleep") {
+      if (!devices.has(socket) || sleeping.has(socket) === message.asleep) return;
+      if (message.asleep) sleeping.add(socket);
+      else sleeping.delete(socket);
+      broadcastAsleep();
       return;
     }
     if (message.type === "signal") {
@@ -326,7 +341,11 @@ export function createHubServer(options: HubServerOptions): HubServer {
     socket.on("close", () => {
       clearTimeout(authTimer);
       if (!authenticated.delete(socket)) releasePending(socket, address);
-      else if (devices.delete(socket)) broadcastPeers();
+      else if (devices.delete(socket)) {
+        const wasAsleep = sleeping.delete(socket);
+        broadcastPeers();
+        if (wasAsleep) broadcastAsleep();
+      }
     });
   });
 
